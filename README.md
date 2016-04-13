@@ -9,6 +9,14 @@ There are 10 transaction classes. Instances of each class will randomly read a t
 * I am not handling the case a transaction instance will try to access a non-existant tuple which will throw an exception and stop the workload run process. In this case simply re-run the command. This expected as the original data tuples are generated randomly to begin with. This should be fiexed soon.
 * Testing: I tested the current version of the code with 50K data objects and 50K workload. 
 
+### Getting source code
+
+You need git to be installed and configured proparly.
+
+```sh
+$ git clone https://github.com/qadahtm/aims-project ; cd aims-project
+```
+
 ### Usage procedure
 Most probably you want to run the following in sequence.
 

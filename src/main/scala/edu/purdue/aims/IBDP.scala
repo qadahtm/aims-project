@@ -53,83 +53,7 @@ object IBDP extends App {
   
 //  IBDP_BinPack()
     
-    generateDataFiles(in_datacsv)
   
-  
-  def generateDataFiles(in_datacsv:String) ={
-    
-    val parsed =  readWTFromLogTable(in_datacsv)
-    val dolabels = parsed._1
-    val txnlabels = parsed._2
-    val WTres = parsed._3
-    
-    val N = dolabels.size
-    
-    // creating file for transaction instances
-    val pw_t = new PrintWriter(new File("t.dat" ))
-    pw_t.print("txniId")
-    for (o_i <- dolabels){
-      pw_t.print(s",$o_i")  
-    }
-    pw_t.println()
-    for (txni <- WTres) {
-      // create a datafile for W
-      val txid = txnlabels(txni.cid)
-      pw_t.print(txid)
-      for (i <- (0 to dolabels.size-1)){
-        if (i > 0) pw_t.print(",")
-        if (txni.rs.map(_.oid).contains(i) || txni.ws.map(_.oid).contains(i)){
-          pw_t.print("1")  
-        }
-        else pw_t.print("0")        
-      }
-      
-      pw_t.println()     
-      
-    }
-     pw_t.close
-    
-    // creating files for edges
-//    println("DDG")
-   val pw_e = new PrintWriter(new File("e.dat" ))
-    for ((o_i,i) <- dolabels.zipWithIndex){
-      if (i >0) pw_e.print(",")
-      pw_e.print(s"$o_i")  
-    }
-    pw_e.println()
-    
-    val evarm = Array.ofDim[Int](N,N)
-    WTres.zipWithIndex.foreach { case (txni,j) => {
-      fill1_evarmInt(txnlabels,txni, evarm)
-    } }  
-    
-    for (i <- (0 to evarm.size-1)){      
-      for (j <- (0 to evarm(i).size-1)){
-        if (evarm(i)(j) == 1) println(s"edge betweetn o($i) and o($j)")
-        if (j > 0) pw_e.print(",")
-        pw_e.print(evarm(i)(j))
-      }      
-      pw_e.println()
-    }
-   
-    pw_e.close
-    
-    
-    // creating data file for weights
-    val pw_w = new PrintWriter(new File("w.dat" ))
-    val wsets = compute_weight_sets(dolabels, WTres)
-    
-    
-    println(wsets.size)
-    val ws = wsets.map(_.size)
-    for ((w_i, i) <- ws.zipWithIndex){
-      pw_w.println(dolabels(i) +","+w_i )            
-    }
-    
-    pw_w.close
-    
-    
-  }
   
   def play() = {
     val k = 2
@@ -144,87 +68,7 @@ object IBDP extends App {
     
   }
   
-  // Example: readWTFromLogTable("log_table_tpcc_small.csv")
   
-  def readWTFromLogTable(fname:String) : (List[String], List[String], List[TransactionInstance]) = {
-//    val fname = "log_table_tpcc_small.csv"    
-    val reader = Source.fromFile(fname)
-    
-    val WT = collection.mutable.Map[Int,TransactionInstance]()
-    val txnLabels = ListBuffer[String]()
-    val dataObjectsLabels = ListBuffer[String]()
-    
-    val lines = reader.getLines()
-    lines.next() // skip the header line
-    lines.foreach{ line => {
-      
-      val sline = line.split(",")
-      val txid = sline(1)
-      val oid = sline(2)
-      val op = sline(3)
-      
-      
-      // add labels if do not exist
-      if (!txnLabels.toSet.contains(txid)) txnLabels += txid
-      if (!dataObjectsLabels.toSet.contains(oid)) dataObjectsLabels += oid
-      
-      val j = txnLabels.indexOf(txid)
-      val i = dataObjectsLabels.indexOf(oid)  
-      
-      
-      WT.get(j) match {
-        case Some(txni) => {
-          // we have seen this transaction instance before, update its rs and ws
-          if (op.toInt == 1){
-            if (!txni.rs.map(_.oid).toSet.contains(i)){
-              WT.put(j, TransactionInstance(j,0,txni.rs ++ List[DataObject](DataObject(i)), txni.ws))              
-            }
-            
-          }
-          else if (op.toInt == 3){
-            if (!txni.ws.map(_.oid).toSet.contains(i)){
-              WT.put(j, TransactionInstance(j,0, txni.rs,txni.ws ++ List[DataObject](DataObject(i))))              
-            }
-          }          
-        }
-        case None => {
-          // first time for this transaction instance
-          val rs = ListBuffer[DataObject]()
-          val ws = ListBuffer[DataObject]()
-          
-          if (op.toInt == 1){
-            //add read to read set
-            rs += DataObject(i)            
-          }
-          else if (op.toInt == 3){
-            // add update to write set
-            ws += DataObject(i)
-          }
-          WT.put(j, TransactionInstance(j,0,rs.toList, ws.toList))
-        }
-      }
-     
-    
-    }}
-    
-    
-    val WTres = WT.values.toList
-    
-    val WTdokey = WTres.map { t => {
-      val olist = t.ws.toSet.union(t.rs.toSet)
-      .map { x => (x.oid,Set[Int](t.cid)) }
-      //.toList.groupBy(_._1)
-      
-//      .foldLeft(z)(op)((p1, p2) => {
-//        (p1._1, p1._2.union(p2._2))
-//      })
-      olist
-    } }
-    
-//    println(WTdokey)
-    
-    return (dataObjectsLabels.toList, txnLabels.toList, WTres)
-  }
   
   
   def IBDPSolve(fname:String, in_k:Int, in_eps:Int, in_qmax:Int) = {
@@ -239,7 +83,7 @@ object IBDP extends App {
     
     // Problem Setup
     println("Parsing Workload fom File")
-    val fromFile = readWTFromLogTable(fname)
+    val fromFile = AimsUtils.readWTFromLogTable(fname, true)
     println("Workload Parsing is done")
     val dataObjectsLabels = fromFile._1
     
@@ -412,7 +256,7 @@ object IBDP extends App {
     }
     
     // 3.b. Define the optimization objective function 
-    val node_weights = compute_weight_sets(dataObjectsLabels, WT)
+    val node_weights = AimsUtils.compute_weight_sets(dataObjectsLabels, WT)
     val obj_var = VariableFactory.bounded("cost_func1", 0, 999, ibdp_solver)
     val nwArr = node_weights.map(_.size).toArray
     ibdp_solver.post(IntConstraintFactory.scalar(bos.toArray, nwArr, obj_var))
@@ -566,25 +410,6 @@ object IBDP extends App {
     }
   }
   
-  def fill1_evarmInt(txnlabels:List[String],txni:TransactionInstance, evarm:Array[Array[Int]]) = {
-//    println("looking at "+txni)
-    val rset = txni.rs.map { x => x.oid }.toSet
-    val wset = txni.ws.map { x => x.oid }.toSet
-    val rdiff = rset.diff(wset)
-    val wdiff = wset.diff(rset)
-//    println(rdiff)
-//    println(wdiff)
-    val txid = txnlabels(txni.cid)
-    println(s"$txid: rset = $rset, wset = $wset, rdiff = $rdiff, wdiff = $wdiff")
-
-    
-    for (rse <- rdiff){
-      for (wse <- wset){
-        evarm(rse)(wse) = 1
-      }
-    }    
-  }
-  
   def fill1_evarm(txni:TransactionInstance, evarm:Array[Array[IntVar]] , _solver:Solver) = {
     val rset = txni.rs.map { x => x.oid }.toSet
     val wset = txni.ws.map { x => x.oid }.toSet
@@ -614,28 +439,6 @@ object IBDP extends App {
     return res.toList
   }
   
-  // compute weights on nodes from transaction workload
-  // weights correspond to transaction instances
-  // returns a pair (i,w) where i = index of data object, w = weight of data object (not used) 
-  // returns a pair (i,w_set) where i = index of data object, w = a set of transaction instance ids 
-  
-  def compute_weight_sets(D:List[String], WT:List[TransactionInstance]) : List[Set[Int]]={
-    val res = ListBuffer[Set[Int]]()
-    for (i <- (0 to D.size-1)){
-      val wset = collection.mutable.Set[Int]()
-      for (j <- (0 to WT.size-1)){
-//        println(WT(j))
-        if(WT(j).rs.map(_.oid).toSet.contains(i) || 
-            WT(j).ws.map(_.oid).toSet.contains(i)){
-//          println(s"t_$j in the weight set of o_$i")
-          wset += j
-        }
-      }
-      
-      res += wset.toSet
-    }
-    res.toList
-  }
   
 
   val dataObjectsLabels = List[String]("a","b","c","d", "e", "f", "g","h","i","j","k","n")
@@ -714,5 +517,208 @@ object IBDP extends App {
 case class DataObject(val oid:Int)
 case class TransactionInstance(val cid:Int, val ts:Int, val rs:List[DataObject], val ws:List[DataObject]) 
 
+object AimsUtils {
+   def generateDataFiles(in_datacsv:String, skipHeader:Boolean) ={
+    
+    val parsed =  readWTFromLogTable(in_datacsv, skipHeader)
+    val dolabels = parsed._1
+    val txnlabels = parsed._2
+    val WTres = parsed._3
+    
+    val N = dolabels.size
+    
+    // creating file for transaction instances
+    val pw_t = new PrintWriter(new File("t.dat" ))
+    pw_t.print("txniId")
+    for (o_i <- dolabels){
+      pw_t.print(s",$o_i")  
+    }
+    pw_t.println()
+    for (txni <- WTres) {
+      // create a datafile for W
+      val txid = txnlabels(txni.cid)
+      pw_t.print(txid)
+      for (i <- (0 to dolabels.size-1)){
+        if (i > 0) pw_t.print(",")
+        if (txni.rs.map(_.oid).contains(i) || txni.ws.map(_.oid).contains(i)){
+          pw_t.print("1")  
+        }
+        else pw_t.print("0")        
+      }
+      
+      pw_t.println()     
+      pw_t.flush()
+    }
+     pw_t.close
+    
+    // creating files for edges
+//    println("DDG")
+   val pw_e = new PrintWriter(new File("e.dat" ))
+    for ((o_i,i) <- dolabels.zipWithIndex){
+      if (i >0) pw_e.print(",")
+      pw_e.print(s"$o_i")  
+    }
+    pw_e.println()
+    
+    val evarm = Array.ofDim[Int](N,N)
+    WTres.zipWithIndex.foreach { case (txni,j) => {
+      fill1_evarmInt(txnlabels,txni, evarm)
+    } }  
+    
+    for (i <- (0 to evarm.size-1)){      
+      for (j <- (0 to evarm(i).size-1)){
+//        if (evarm(i)(j) == 1) println(s"edge betweetn o($i) and o($j)")
+        if (j > 0) pw_e.print(",")
+        pw_e.print(evarm(i)(j))
+      }      
+      pw_e.println()
+      pw_e.flush()
+    }
+   
+    pw_e.close
+    
+    
+    // creating data file for weights
+    val pw_w = new PrintWriter(new File("w.dat" ))
+    val wsets = compute_weight_sets(dolabels, WTres)
+    
+    
+    println(wsets.size)
+    val ws = wsets.map(_.size)
+    for ((w_i, i) <- ws.zipWithIndex){
+      pw_w.println(dolabels(i) +","+w_i )     
+    }
+    
+    pw_w.close
+    
+    
+  }
+   
+   // compute weights on nodes from transaction workload
+  // weights correspond to transaction instances
+  // returns a pair (i,w) where i = index of data object, w = weight of data object (not used) 
+  // returns a pair (i,w_set) where i = index of data object, w = a set of transaction instance ids 
+  
+  def compute_weight_sets(D:List[String], WT:List[TransactionInstance]) : List[Set[Int]]={
+    val res = ListBuffer[Set[Int]]()
+    for (i <- (0 to D.size-1)){
+      val wset = collection.mutable.Set[Int]()
+      for (j <- (0 to WT.size-1)){
+//        println(WT(j))
+        if(WT(j).rs.map(_.oid).toSet.contains(i) || 
+            WT(j).ws.map(_.oid).toSet.contains(i)){
+//          println(s"t_$j in the weight set of o_$i")
+          wset += j
+        }
+      }
+      
+      res += wset.toSet
+    }
+    res.toList
+  }
+  
+  
+  // Example: readWTFromLogTable("log_table_tpcc_small.csv", True)
+  
+  def readWTFromLogTable(fname:String, skipHeader: Boolean) : (List[String], List[String], List[TransactionInstance]) = {
+//    val fname = "log_table_tpcc_small.csv"    
+    val reader = Source.fromFile(fname)
+    
+    val WT = collection.mutable.Map[Int,TransactionInstance]()
+    val txnLabels = ListBuffer[String]()
+    val dataObjectsLabels = ListBuffer[String]()
+    
+    val lines = reader.getLines()
+    if (skipHeader) lines.next() // skip the header line
+    lines.foreach{ line => {
+      
+      val sline = line.split(",")
+      val txid = sline(1)
+      val oid = sline(2)
+      val op = sline(3)
+      
+      
+      // add labels if do not exist
+      if (!txnLabels.toSet.contains(txid)) txnLabels += txid
+      if (!dataObjectsLabels.toSet.contains(oid)) dataObjectsLabels += oid
+      
+      val j = txnLabels.indexOf(txid)
+      val i = dataObjectsLabels.indexOf(oid)  
+      
+      
+      WT.get(j) match {
+        case Some(txni) => {
+          // we have seen this transaction instance before, update its rs and ws
+          if (op.toInt == 1){
+            if (!txni.rs.map(_.oid).toSet.contains(i)){
+              WT.put(j, TransactionInstance(j,0,txni.rs ++ List[DataObject](DataObject(i)), txni.ws))              
+            }
+            
+          }
+          else if (op.toInt == 3){
+            if (!txni.ws.map(_.oid).toSet.contains(i)){
+              WT.put(j, TransactionInstance(j,0, txni.rs,txni.ws ++ List[DataObject](DataObject(i))))              
+            }
+          }          
+        }
+        case None => {
+          // first time for this transaction instance
+          val rs = ListBuffer[DataObject]()
+          val ws = ListBuffer[DataObject]()
+          
+          if (op.toInt == 1){
+            //add read to read set
+            rs += DataObject(i)            
+          }
+          else if (op.toInt == 3){
+            // add update to write set
+            ws += DataObject(i)
+          }
+          WT.put(j, TransactionInstance(j,0,rs.toList, ws.toList))
+        }
+      }
+     
+    
+    }}
+    
+    
+    val WTres = WT.values.toList
+    
+    val WTdokey = WTres.map { t => {
+      val olist = t.ws.toSet.union(t.rs.toSet)
+      .map { x => (x.oid,Set[Int](t.cid)) }
+      //.toList.groupBy(_._1)
+      
+//      .foldLeft(z)(op)((p1, p2) => {
+//        (p1._1, p1._2.union(p2._2))
+//      })
+      olist
+    } }
+    
+//    println(WTdokey)
+    
+    return (dataObjectsLabels.toList, txnLabels.toList, WTres)
+  }
+  
+  def fill1_evarmInt(txnlabels:List[String],txni:TransactionInstance, evarm:Array[Array[Int]]) = {
+//    println("looking at "+txni)
+    val rset = txni.rs.map { x => x.oid }.toSet
+    val wset = txni.ws.map { x => x.oid }.toSet
+    val rdiff = rset.diff(wset)
+    val wdiff = wset.diff(rset)
+//    println(rdiff)
+//    println(wdiff)
+    val txid = txnlabels(txni.cid)
+    println(s"$txid: rset = $rset, wset = $wset, rdiff = $rdiff, wdiff = $wdiff")
+
+    
+    for (rse <- rdiff){
+      for (wse <- wset){
+        evarm(rse)(wse) = 1
+      }
+    }    
+  }
+  
+}
 
 

@@ -8,6 +8,9 @@ import scalikejdbc._
 import org.fluttercode.datafactory.impl.DataFactory
 import org.joda.time.DateTime
 import java.text.SimpleDateFormat
+import scala.collection.mutable.ListBuffer
+import java.io.PrintWriter
+import java.io.File
 
 
 class WorkloadDriver {
@@ -95,44 +98,58 @@ object DemoWorkloadDriver extends App{
       val nn = (1 to n/10)
 //      println(nn)
       
+      val pw = new PrintWriter(new File("wl.trace"))
       
       val alpha = "ABCDEDGHIJKLMNOPRSTUVWZ"
       val rand = scala.util.Random
     
       // 10 transaction profiles
-      val r = Randomdata.syntax("r")
       
-//      DB localTx { implicit session =>
-//          {
-//
-//            val from = sql"select oid, id, bankbalance from randomdata where fname like 'C%' order by RANDOM() limit 1".map { x => {
-//              (x.long(1), x.long(2), x.float(3))
-//            } }.list.apply()
-//            
-//            println(from.size)
-////            if (from(0).underlying.next()){
-////              println(from(0))
-////            }
-////            println(.metaData.getColumnCount)
-////            println(from(0).any(1))
-//            //              println(from(0))      
-//
-////            val to = withSQL {
-////              select
-////                .from(Randomdata as r)
-////                .where.like(r.fname, tc1_alpha2 + "%")
-////                .append(sqls"order by RANDOM()")
-////                .limit(1)
-////            }.map(Randomdata(r)).list.apply()
-////
-////            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-////            val id1 = to(0).id
-////
-////            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-//
-//          }
-//        }
-//      
+   
+      def runTxnInstance(tc_alpha1:String, tc_alpha2:String, n:Int) : List[List[Long]] = {
+        val r = Randomdata.syntax("r")
+        val nn = (1 to n/10)
+        var res = ListBuffer[List[Long]]()
+        for (i <- nn) {
+          DB localTx { implicit session =>
+            {
+  
+              val txid = sql"select txid_current()".list.result(x => {
+                x.long(1)
+              }, session)(0)
+ 
+              val from = withSQL {
+                select
+                  .from(Randomdata as r)
+                  .where.like(r.fname, tc_alpha1 + "%")
+                  .append(sqls"order by RANDOM()")
+                  .limit(1)
+              }.map(Randomdata(r)).list.apply()
+  
+                   
+  
+              val to = withSQL {
+                select
+                  .from(Randomdata as r)
+                  .where.like(r.fname, tc_alpha2 + "%")
+                  .append(sqls"order by RANDOM()")
+                  .limit(1)
+              }.map(Randomdata(r)).list.apply()
+  
+              val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
+              val id1 = to(0).id
+  
+              sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
+              val re = List( System.currentTimeMillis, txid, from(0).id, 1)
+              val we = List( System.currentTimeMillis, txid, to(0).id, 3)
+              res += re
+              res += we
+            }
+          }
+        }
+        
+        return res.toList        
+      }
       
       // 1. updates by last name starting with A,B,C
       // Randomly chooses two letters from ABC
@@ -142,146 +159,46 @@ object DemoWorkloadDriver extends App{
       val tc1_alpha2 = alpha(rand.nextInt(3)) // index of c
 //      println(tc1_alpha1)
 //      println(tc1_alpha2)
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-
-//            val txid = sql"select txid_current()".list.result(x => {
-//              x.int(1)
-//            }, session)(0)
-//
-//            println("txid = " + txid)
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc1_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            //              println(from(0))      
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc1_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
       
+      runTxnInstance(tc1_alpha1.toString(), tc1_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
+      
+      pw.flush()
       
       // 2. updates by last name starting with D,E,F
       
-      // Randomly chooses two letters from ABC
-      // add 10% of the balance from the first to the second balance
-      
+          
       val tc2_alpha1 = alpha(rand.nextInt(3)+3) // index of F
       val tc2_alpha2 = alpha(rand.nextInt(3)+3) // index of F
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc2_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc2_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc2_alpha1.toString(), tc2_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
       
+      pw.flush()
       
       // 3. updates by last name starting with G,H,I, J
       
       val tc3_alpha1 = alpha(rand.nextInt(4)+6) // index of F
       val tc3_alpha2 = alpha(rand.nextInt(4)+6) // index of F
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc3_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc3_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc3_alpha1.toString(), tc3_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
       
+      pw.flush()
       
       // 4. updates by last name starting with K,L,M, N, O
       
       val tc4_alpha1 = alpha(rand.nextInt(5)+10) 
       val tc4_alpha2 = alpha(rand.nextInt(5)+10) 
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc4_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc4_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc4_alpha1.toString(), tc4_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
+      
+      pw.flush()
       
       
       // 5. updates by last name starting with P,R,S,T,U,V,W,Z
@@ -289,168 +206,55 @@ object DemoWorkloadDriver extends App{
       val tc5_alpha1 = alpha(rand.nextInt(11)+12) 
       val tc5_alpha2 = alpha(rand.nextInt(11)+12) 
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc5_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc5_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc5_alpha1.toString(), tc5_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
+      
+      pw.flush()
       
       // 6. updates by first name starting with A,B,C
       
       val tc6_alpha1 = alpha(rand.nextInt(3)) // index of c
       val tc6_alpha2 = alpha(rand.nextInt(3)) // index of c
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc6_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc6_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc6_alpha1.toString(), tc6_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
       
+      pw.flush()
       
       // 7. updates by first name starting with D,E,F
       
       val tc7_alpha1 = alpha(rand.nextInt(3)+3) // index of F
       val tc7_alpha2 = alpha(rand.nextInt(3)+3) // index of F
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc7_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc7_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc7_alpha1.toString(), tc7_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
       
+      pw.flush()
       
       // 8. updates by first name starting with G,H,I, J,
       
-      val tc8_alpha1 = alpha(rand.nextInt(4)+6) // index of F
-      val tc8_alpha2 = alpha(rand.nextInt(4)+6) // index of F
+      val tc8_alpha1 = alpha(rand.nextInt(4)+6) 
+      val tc8_alpha2 = alpha(rand.nextInt(4)+6) 
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc8_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc8_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc8_alpha1.toString(), tc8_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
       
+      pw.flush()
       
       // 9. updates by first name starting with K,L,M, N, O
       
       val tc9_alpha1 = alpha(rand.nextInt(5)+10) 
       val tc9_alpha2 = alpha(rand.nextInt(5)+10) 
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc9_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc9_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc9_alpha1.toString(), tc9_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
+      
+      pw.flush()
       
       // 10. updates by first name starting with P,R,S,T,U,V,W,Z
       
@@ -458,34 +262,18 @@ object DemoWorkloadDriver extends App{
       
       val tc10_alpha2 = alpha(rand.nextInt(11)+12) 
       
-      for (i <- nn) {
-        DB localTx { implicit session =>
-          {
-            val from = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc10_alpha1 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply() 
-
-            val to = withSQL {
-              select
-                .from(Randomdata as r)
-                .where.like(r.fname, tc10_alpha2 + "%")
-                .append(sqls"order by RANDOM()")
-                .limit(1)
-            }.map(Randomdata(r)).list.apply()
-
-            val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-            val id1 = to(0).id
-
-            sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-
-          }
-        }
-      }
+      runTxnInstance(tc10_alpha1.toString(), tc10_alpha2.toString(),n).foreach{x => {
+        pw.println(x.mkString(","))
+      }}
       
+      pw.close()
+    }
+    
+    case "gend" => {
+      
+      val in_datacsv = args(1)
+      val skipHeader = args(2).toBoolean
+      AimsUtils.generateDataFiles(in_datacsv, skipHeader)
     }
     
     case _ => {
