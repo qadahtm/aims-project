@@ -155,7 +155,7 @@ object TxnUtils {
   
   def runConfWorkloadTry2(countryLabels:List[String]) = {
     var ci = 0
-    
+    var ci2 = 0
     for (i <- (1 to 200)){
       if (ci == countryLabels.size) ci = 0
       
@@ -163,6 +163,15 @@ object TxnUtils {
       for (j <- (1 to 100)){
         runClassATransaction(countryLabels.indexOf(country1),countryLabels)  
       }
+      // pick a destination country at random.  
+//      val cr = countryLabels.slice(ci, 
+      
+//      for (j <- (1 to 10) {
+        
+//        runClassBTransaction(_scountry, _dcountry, countryLabels)
+//      }
+      
+//      val ci2 = scala.util.Random.nextInt(countryLabels.size) 
       
       ci = ci + 1
     }
@@ -573,7 +582,10 @@ object TxnUtils {
   }
 
   // class B: run a transfer between two random accounts from two different countries. 
-
+  def runClassBTransaction(_sci: Int, _dci: Int, countryLabels:List[String]): List[List[Long]] = {
+    runClassBTransaction(countryLabels(_sci), countryLabels(_dci), countryLabels)
+  }
+  
   def runClassBTransaction(_scountry: String, _dcountry: String, countryLabels:List[String]): List[List[Long]] = {
     val res = ListBuffer[List[Long]]()
     var stime = 0L
@@ -596,7 +608,7 @@ object TxnUtils {
             .limit(1)
         }.map(Randomdata(r)).list.apply()
 
-        res += List(System.currentTimeMillis, txid, from(0).id, READ_OP)
+        res += List(System.currentTimeMillis, txid, from(0).id, READ_OP, countryLabels.indexOf(_scountry), countryLabels.indexOf(_dcountry))
 
         val to = withSQL {
           select
@@ -616,10 +628,10 @@ object TxnUtils {
         val did = to(0).id
 
         sql"update Randomdata set bankbalance = ${snbal} where id = ${sid}".update.apply()
-        res += List(System.currentTimeMillis, txid, from(0).id, UPDATE_OP)
+        res += List(System.currentTimeMillis, txid, from(0).id, UPDATE_OP, countryLabels.indexOf(_scountry), countryLabels.indexOf(_dcountry))
 
         sql"update Randomdata set bankbalance = ${dnbal} where id = ${did}".update.apply()
-        res += List(System.currentTimeMillis, txid, to(0).id, UPDATE_OP)
+        res += List(System.currentTimeMillis, txid, to(0).id, UPDATE_OP, countryLabels.indexOf(_scountry), countryLabels.indexOf(_dcountry))
       }
     }
     

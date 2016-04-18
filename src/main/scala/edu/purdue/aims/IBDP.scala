@@ -403,16 +403,16 @@ object IBDP extends App {
     } 
   }
   
-//  def fill0_evarmInt(evarm:Array[Array[Int]]) = {
-//    // fill in zeros 
-//    for (i <- (0 to evarm.size-1)){
-//      for (j <- (0 to evarm(i).size-1)){
-//        if (evarm(i)(j) == null){
-//          evarm(i)(j) = 0
-//        }
-//      }
-//    }
-//  }
+  def fill0_evarmInt(evarm:Array[Array[Int]]) = {
+    // fill in zeros 
+    for (i <- (0 to evarm.size-1)){
+      for (j <- (0 to evarm(i).size-1)){
+        if (evarm(i)(j) == null){
+          evarm(i)(j) = 0
+        }
+      }
+    }
+  }
   
   def fill0_evarm(evarm:Array[Array[IntVar]] , _solver:Solver) = {
     // fill in zeros 
@@ -531,7 +531,7 @@ object IBDP extends App {
 }
 case class DataObject(val oid:Int)
 case class TransactionInstance(val cid:Int, val ts:Int, val rs:List[DataObject], val ws:List[DataObject])
-case class TransactionFootprint(val cid:Int, val fp:List[DataObject])
+case class TransactionFootprint(val cid:Int, val rs:List[DataObject], val ws:List[DataObject])
 
 
 object AimsUtils {
@@ -545,17 +545,22 @@ object AimsUtils {
     val txnClasslabels = parsed._3
     val WTres = parsed._4
     
-    println("class labesl size ="+txnClasslabels.size)
+    println("number of classes ="+txnClasslabels.size)
 //    txnClasslabels.foreach { println }
+    println("number of tx instance ="+WTres.size)
+    
+//    for (ti <- WTres){
+//      println(s"${ti.cid}, ${ti.ts}, rs = ${ti.rs}, ws = ${ti.ws}")
+//    }
     
     val WTFP = WTres.map { x => {
-      TransactionFootprint(x.cid, x.rs.union(x.ws))
+      TransactionFootprint(x.cid, x.rs,x.ws)
     } }.groupBy { x => {
       x.cid
     } }.mapValues { x => {
       var res = x(0)
       for (i <- (1 to x.size-1)){
-        res = TransactionFootprint(res.cid, res.fp.union(x(i).fp))
+        res = TransactionFootprint(res.cid, res.rs.union(x(i).rs), res.ws.union(x(i).ws))
       }
       res
     } }.map { _._2 }
@@ -575,8 +580,8 @@ object AimsUtils {
       pw_t.print(txnClasslabels(txni.cid))
       for (i <- (0 to dolabels.size-1)){
         pw_t.print(",")
-        if (txni.fp.map(_.oid).contains(i)){
-//        if (txni.rs.map(_.oid).contains(i) || txni.ws.map(_.oid).contains(i)){
+//        if (txni.fp.map(_.oid).contains(i)){
+        if (txni.rs.map(_.oid).contains(i) || txni.ws.map(_.oid).contains(i)){
           pw_t.print("1")  
         }
         else pw_t.print("0")        
@@ -599,12 +604,12 @@ object AimsUtils {
     
     val evarm = Array.ofDim[Int](N,N)
     WTres.zipWithIndex.foreach { case (txni,j) => {
-      fill1_evarmInt(txnlabels,txni, evarm)
+      fill1_evarmInt(txni, evarm)
     } }  
     
     for (i <- (0 to evarm.size-1)){      
       for (j <- (0 to evarm(i).size-1)){
-//        if (evarm(i)(j) == 1) println(s"edge betweetn o($i) and o($j)")
+        if (evarm(i)(j) == 1) println(s"edge between o($i) and o($j)")
         if (j > 0) pw_e.print(",")
         pw_e.print(evarm(i)(j))
       }      
@@ -703,14 +708,15 @@ object AimsUtils {
         case Some(txni) => {
           // we have seen this transaction instance before, update its rs and ws
           if (op.toInt == 1){
-            
             if (!txni.rs.map(_.oid).toSet.contains(i)){
+//              println(s"tx $j has read object $i")
               WT.put(j, TransactionInstance(cid,j,txni.rs ++ List[DataObject](DataObject(i)), txni.ws))              
             }
             
           }
           else if (op.toInt == 3){
             if (!txni.ws.map(_.oid).toSet.contains(i)){
+//              println(s"tx $j has written object $i")
               WT.put(j, TransactionInstance(cid,j, txni.rs,txni.ws ++ List[DataObject](DataObject(i))))              
             }
           }          
@@ -721,10 +727,12 @@ object AimsUtils {
           val ws = ListBuffer[DataObject]()          
           
           if (op.toInt == 1){
+//            println(s"tx $j has read object $i")
             //add read to read set
             rs += DataObject(i)            
           }
           else if (op.toInt == 3){
+//            println(s"tx $j has written object $i")
             // add update to write set
             ws += DataObject(i)
           }
@@ -741,58 +749,26 @@ object AimsUtils {
     return (dataObjectsLabels.toList, txnLabels.toList, txnClassLabels.toList, WTres)
   }
   
+//  def fill1_evarmInt(txni:TransactionFootprint, evarm:Array[Array[Int]]) = {
+////    println("looking at "+txni)
+//    val rset = txni.rs.map { x => x.oid }.toSet
+//    val wset = txni.ws.map { x => x.oid }.toSet
+//    val rdiff = rset.diff(wset)
+//    val wdiff = wset.diff(rset)
+////    println(rdiff)
+////    println(wdiff)
+////    val txid = txnlabels(txni.cid)
+////    println(s"$txid: rset = $rset, wset = $wset, rdiff = $rdiff, wdiff = $wdiff")
+//
+//    
+//    for (rse <- rdiff){
+//      for (wse <- wset){
+//        evarm(rse)(wse) = 1
+//      }
+//    }    
+//  }
   
-    def readWTFPFromLogTable(fname:String, skipHeader: Boolean) : (List[String], List[String], List[TransactionFootprint]) = {
-//    val fname = "log_table_tpcc_small.csv"    
-    val reader = Source.fromFile(fname)
-    
-    val WT = collection.mutable.Map[Int,TransactionFootprint]()
-    val txnLabels = ListBuffer[String]()
-    val dataObjectsLabels = ListBuffer[String]()
-    
-    val lines = reader.getLines()
-    if (skipHeader) lines.next() // skip the header line
-    lines.foreach{ line => {
-      
-      val sline = line.split(",")
-      val txid = sline(1)
-      val oid = sline(2)
-      val op = sline(3)
-      val cid = sline(4)
-      
-      
-      // add labels if do not exist
-      if (!txnLabels.toSet.contains(cid)) txnLabels += txid
-      if (!dataObjectsLabels.toSet.contains(oid)) dataObjectsLabels += oid
-      
-      val j = txnLabels.indexOf(cid)
-      val i = dataObjectsLabels.indexOf(oid)  
-      
-      
-      WT.get(j) match {
-        case Some(txni) => {
-          // we have seen this transaction instance before, update its rs and ws
-          if (!txni.fp.map(_.oid).toSet.contains(i)){
-            WT.put(j, TransactionFootprint(j,txni.fp ++ List[DataObject](DataObject(i))))                  
-          }
-                  
-        }
-        case None => {
-          // first time for this transaction class
-          val fp = ListBuffer[DataObject]()
-          fp += DataObject(i)          
-          WT.put(j, TransactionFootprint(j,fp.toList))
-        }
-      }
-    
-    }}
-    
-    val WTres = WT.values.toList
-    
-    return (dataObjectsLabels.toList, txnLabels.toList, WTres)
-  }
-  
-  def fill1_evarmInt(txnlabels:List[String],txni:TransactionInstance, evarm:Array[Array[Int]]) = {
+  def fill1_evarmInt(txni:TransactionInstance, evarm:Array[Array[Int]]) = {
 //    println("looking at "+txni)
     val rset = txni.rs.map { x => x.oid }.toSet
     val wset = txni.ws.map { x => x.oid }.toSet
@@ -800,11 +776,11 @@ object AimsUtils {
     val wdiff = wset.diff(rset)
 //    println(rdiff)
 //    println(wdiff)
-    val txid = txnlabels(txni.cid)
-//    println(s"$txid: rset = $rset, wset = $wset, rdiff = $rdiff, wdiff = $wdiff")
+//    val txid = txnlabels(txni.cid)
+//    println(s"${txni.cid}-${txni.ts}: rset = $rset, wset = $wset, rdiff = $rdiff, wdiff = $wdiff")
 
     
-    for (rse <- rdiff){
+    for (rse <- rset){
       for (wse <- wset){
         evarm(rse)(wse) = 1
       }
