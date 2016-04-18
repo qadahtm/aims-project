@@ -11,38 +11,50 @@ import java.text.SimpleDateFormat
 import scala.collection.mutable.ListBuffer
 import java.io.PrintWriter
 import java.io.File
-
+import java.util.concurrent.Executors
+import javax.transaction.xa.Xid;
+import java.nio.ByteBuffer
 
 class WorkloadDriver {
-  
+
 }
 
-object DemoWorkloadDriver extends App{
-//  val url = "jdbc:postgresql://localhost:5432/tpcc"
-//  val props = new java.util.Properties()
-//  props.setProperty("user","postgres");
-//  props.setProperty("password","postgres");
-//  props.setProperty("ssl","true");
-//  
-//  
-//  val conn = DriverManager.getConnection(url, props);
-  
+object DemoWorkloadDriver extends App {
+  //  val url = "jdbc:postgresql://localhost:5432/tpcc"
+  //  val props = new java.util.Properties()
+  //  props.setProperty("user","postgres");
+  //  props.setProperty("password","postgres");
+  //  props.setProperty("ssl","true");
+  //  
+  //  
+  //  val conn = DriverManager.getConnection(url, props);
+
   Class.forName("org.postgresql.Driver")
   ConnectionPool.singleton("jdbc:postgresql://localhost:5432/tpcc", "postgres", "postgres")
-  
+
+  val epool = Executors.newFixedThreadPool(5);
+
   implicit val session = AutoSession
-  
+
   GlobalSettings.loggingSQLAndTime = new LoggingSQLAndTimeSettings(
-    enabled = true,
+    enabled = false,
     singleLineMode = true,
-    logLevel = 'DEBUG
-  )
-  
+    logLevel = 'DEBUG)
+
+  val (countryLabels, countryDist) = loadCountries();
+  println("Country data loaded. Total coutnries: " + countryLabels.size)
+  //  println(countryDist.size)
+
+  if (args.size == 0) {
+    printUsage()
+    sys.exit(0)
+  }
+
   val mode = args(0)
-  
+
   mode match {
     case "init" => {
-        sql"""
+      sql"""
   create table Randomdata (
     id serial not null primary key,
     fname varchar(64) not null,
@@ -53,270 +65,264 @@ object DemoWorkloadDriver extends App{
     bankbalance FLOAT not null,
     addressline varchar(256) not null,
     city varchar(64) not null,
-    zipcode varchar(10) not null
+    zipcode varchar(10) not null,
+    country varchar(64) not null
   )
   """.execute.apply()
-      
+
       println("Created Randomdata table")
     }
     case "load" => {
       println("Loading initial data")
       val n = args(1).toInt
-      
+
       // insert n random tuples
-       val df = new DataFactory();
-       val mindt = new DateTime("1990-01-01")
-       val maxdt = new DateTime("2010-12-31")
-       
-       val sdf = new SimpleDateFormat("dd/M/yyyy");
-       val r = scala.util.Random
-       for (i <- (1 to n)){
-         val fname = df.getFirstName()
-         val lname = df.getLastName
-         
-         val dob = df.getDateBetween(mindt.toDate(), maxdt.toDate())
-         
-         val ncar = r.nextInt(10)
-         val bbalance = r.nextFloat()*r.nextInt(100000)
-         val business = df.getBusinessName()
-         val address = df.getAddress()
-         val city = df.getCity()
-         val zipcode = df.getNumberText(5)
-         
-//         println(s"$fname $lname")
-//         println("dob : "+sdf.format(dob))
-//         println(business + " located at " + address)
-//         println(city + " , "+zipcode)
-         
-         sql"insert into randomdata (fname, lname, bname, dob, ncars, bankbalance, addressline, city, zipcode) values (${fname}, ${lname}, ${business}, ${dob}, ${ncar}, ${bbalance}, ${address}, ${city}, ${zipcode})".update.apply()
-       }                
+      val df = new DataFactory();
+      val mindt = new DateTime("1990-01-01")
+      val maxdt = new DateTime("2010-12-31")
+
+      val sdf = new SimpleDateFormat("dd/M/yyyy");
+      val r = scala.util.Random
+      for (i <- (1 to n)) {
+        val fname = df.getFirstName()
+        val lname = df.getLastName
+
+        val dob = df.getDateBetween(mindt.toDate(), maxdt.toDate())
+
+        val ncar = r.nextInt(10)
+        val bbalance = r.nextFloat() * r.nextInt(100000)
+        val business = df.getBusinessName()
+        val address = df.getAddress()
+        val city = df.getCity()
+        val zipcode = df.getNumberText(5)
+        val country = countryLabels(countryDist(r.nextInt(countryDist.size)))
+
+        //         println(s"$fname $lname")
+        //         println("dob : "+sdf.format(dob))
+        //         println(business + " located at " + address)
+        //         println(city + " , "+zipcode)
+        //         println(country)
+
+        sql"insert into randomdata (fname, lname, bname, dob, ncars, bankbalance, addressline, city, zipcode, country) values (${fname}, ${lname}, ${business}, ${dob}, ${ncar}, ${bbalance}, ${address}, ${city}, ${zipcode}, ${country})".update.apply()
+      }
     }
-    case "run" => {
-      println("Running Workload")
-      
+
+    case "runc" => {
+      println("Running complex workload")
       val n = args(1).toInt
-      val nn = (1 to n/10)
-//      println(nn)
-      
-      val pw = new PrintWriter(new File("wl.trace"))
-      
+
+      TxnUtils.runNWorkload(n, countryLabels)
+
+    }
+
+    case "runm-abs" => {
+      val mtxCount = args(1).toInt
+
+    }
+
+    case "runconv" => {
+      TxnUtils.runConfWorkloadTry2(countryLabels)
+//      TxnUtils.runConvWorkload(countryLabels)
+    }
+
+    case "runm" => {
+      val dist = Array.ofDim[Boolean](100)
+      val n = args(1).toInt
+      val ddelay = args(3).toLong
+      assert(n % 100 == 0)
+      val pmf = args(2).toDouble
+      assert(pmf > 0.0 && pmf < 1.0)
+      val pm = (pmf * 100).toInt
+      //      println(pm)
+
+      for (i <- (0 to pm - 1)) {
+        dist(i) = true
+      }
+
+      TxnUtils.runMWorkload(n, ddelay, dist.toList, countryLabels, epool)
+
+    }
+
+    case "run" => {
+      println("Running Simple Workload")
+
+      val n = args(1).toInt
+      val nn = (1 to n / 10)
+      //      println(nn)
+
+      //      val pw = new PrintWriter(new File("wl.trace"))
+
       val alpha = "ABCDEDGHIJKLMNOPRSTUVWZ"
       val rand = scala.util.Random
-    
-      // 10 transaction profiles
-      
-   
-      def runTxnInstance(tc_alpha1:String, tc_alpha2:String, n:Int) : List[List[Long]] = {
-        val r = Randomdata.syntax("r")
-        val nn = (1 to n/10)
-        var res = ListBuffer[List[Long]]()
-        for (i <- nn) {
-          DB localTx { implicit session =>
-            {
-  
-              val txid = sql"select txid_current()".list.result(x => {
-                x.long(1)
-              }, session)(0)
- 
-              val from = withSQL {
-                select
-                  .from(Randomdata as r)
-                  .where.like(r.fname, tc_alpha1 + "%")
-                  .append(sqls"order by RANDOM()")
-                  .limit(1)
-              }.map(Randomdata(r)).list.apply()
-  
-                   
-  
-              val to = withSQL {
-                select
-                  .from(Randomdata as r)
-                  .where.like(r.fname, tc_alpha2 + "%")
-                  .append(sqls"order by RANDOM()")
-                  .limit(1)
-              }.map(Randomdata(r)).list.apply()
-  
-              val nbal = (from(0).bankbalance * 0.1) + to(0).bankbalance
-              val id1 = to(0).id
-  
-              sql"update Randomdata set bankbalance = ${nbal} where id = ${id1}".update.apply()
-              val re = List( System.currentTimeMillis, txid, from(0).id, 1)
-              val we = List( System.currentTimeMillis, txid, to(0).id, 3)
-              res += re
-              res += we
-            }
-          }
-        }
-        
-        return res.toList        
-      }
-      
+
+      // 10 transaction classes
+
       // 1. updates by last name starting with A,B,C
       // Randomly chooses two letters from ABC
       // add 10% of the balance from the first to the second balance
-      
+
       val tc1_alpha1 = alpha(rand.nextInt(3)) // index of c
       val tc1_alpha2 = alpha(rand.nextInt(3)) // index of c
-//      println(tc1_alpha1)
-//      println(tc1_alpha2)
-      
-      runTxnInstance(tc1_alpha1.toString(), tc1_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+      //      println(tc1_alpha1)
+      //      println(tc1_alpha2)
+
+      TxnUtils.runTxnInstance(tc1_alpha1.toString(), tc1_alpha2.toString(), n)
+
       // 2. updates by last name starting with D,E,F
-      
-          
-      val tc2_alpha1 = alpha(rand.nextInt(3)+3) // index of F
-      val tc2_alpha2 = alpha(rand.nextInt(3)+3) // index of F
-      
-      runTxnInstance(tc2_alpha1.toString(), tc2_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+
+      val tc2_alpha1 = alpha(rand.nextInt(3) + 3) // index of F
+      val tc2_alpha2 = alpha(rand.nextInt(3) + 3) // index of F
+
+      TxnUtils.runTxnInstance(tc2_alpha1.toString(), tc2_alpha2.toString(), n)
+
       // 3. updates by last name starting with G,H,I, J
-      
-      val tc3_alpha1 = alpha(rand.nextInt(4)+6) // index of F
-      val tc3_alpha2 = alpha(rand.nextInt(4)+6) // index of F
-      
-      runTxnInstance(tc3_alpha1.toString(), tc3_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+
+      val tc3_alpha1 = alpha(rand.nextInt(4) + 6) // index of F
+      val tc3_alpha2 = alpha(rand.nextInt(4) + 6) // index of F
+
+      TxnUtils.runTxnInstance(tc3_alpha1.toString(), tc3_alpha2.toString(), n)
+
       // 4. updates by last name starting with K,L,M, N, O
-      
-      val tc4_alpha1 = alpha(rand.nextInt(5)+10) 
-      val tc4_alpha2 = alpha(rand.nextInt(5)+10) 
-      
-      runTxnInstance(tc4_alpha1.toString(), tc4_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
-      
+
+      val tc4_alpha1 = alpha(rand.nextInt(5) + 10)
+      val tc4_alpha2 = alpha(rand.nextInt(5) + 10)
+
+      TxnUtils.runTxnInstance(tc4_alpha1.toString(), tc4_alpha2.toString(), n)
+
       // 5. updates by last name starting with P,R,S,T,U,V,W,Z
-      
-      val tc5_alpha1 = alpha(rand.nextInt(11)+12) 
-      val tc5_alpha2 = alpha(rand.nextInt(11)+12) 
-      
-      runTxnInstance(tc5_alpha1.toString(), tc5_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+
+      val tc5_alpha1 = alpha(rand.nextInt(11) + 12)
+      val tc5_alpha2 = alpha(rand.nextInt(11) + 12)
+
+      TxnUtils.runTxnInstance(tc5_alpha1.toString(), tc5_alpha2.toString(), n)
+
       // 6. updates by first name starting with A,B,C
-      
+
       val tc6_alpha1 = alpha(rand.nextInt(3)) // index of c
       val tc6_alpha2 = alpha(rand.nextInt(3)) // index of c
-      
-      runTxnInstance(tc6_alpha1.toString(), tc6_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+
+      TxnUtils.runTxnInstance(tc6_alpha1.toString(), tc6_alpha2.toString(), n)
+
       // 7. updates by first name starting with D,E,F
-      
-      val tc7_alpha1 = alpha(rand.nextInt(3)+3) // index of F
-      val tc7_alpha2 = alpha(rand.nextInt(3)+3) // index of F
-      
-      runTxnInstance(tc7_alpha1.toString(), tc7_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+
+      val tc7_alpha1 = alpha(rand.nextInt(3) + 3) // index of F
+      val tc7_alpha2 = alpha(rand.nextInt(3) + 3) // index of F
+
+      TxnUtils.runTxnInstance(tc7_alpha1.toString(), tc7_alpha2.toString(), n)
+
       // 8. updates by first name starting with G,H,I, J,
-      
-      val tc8_alpha1 = alpha(rand.nextInt(4)+6) 
-      val tc8_alpha2 = alpha(rand.nextInt(4)+6) 
-      
-      runTxnInstance(tc8_alpha1.toString(), tc8_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+
+      val tc8_alpha1 = alpha(rand.nextInt(4) + 6)
+      val tc8_alpha2 = alpha(rand.nextInt(4) + 6)
+
+      TxnUtils.runTxnInstance(tc8_alpha1.toString(), tc8_alpha2.toString(), n)
+
       // 9. updates by first name starting with K,L,M, N, O
-      
-      val tc9_alpha1 = alpha(rand.nextInt(5)+10) 
-      val tc9_alpha2 = alpha(rand.nextInt(5)+10) 
-      
-      runTxnInstance(tc9_alpha1.toString(), tc9_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.flush()
-      
+
+      val tc9_alpha1 = alpha(rand.nextInt(5) + 10)
+      val tc9_alpha2 = alpha(rand.nextInt(5) + 10)
+
+      TxnUtils.runTxnInstance(tc9_alpha1.toString(), tc9_alpha2.toString(), n)
+
       // 10. updates by first name starting with P,R,S,T,U,V,W,Z
-      
-      val tc10_alpha1 = alpha(rand.nextInt(11)+12) 
-      
-      val tc10_alpha2 = alpha(rand.nextInt(11)+12) 
-      
-      runTxnInstance(tc10_alpha1.toString(), tc10_alpha2.toString(),n).foreach{x => {
-        pw.println(x.mkString(","))
-      }}
-      
-      pw.close()
+
+      val tc10_alpha1 = alpha(rand.nextInt(11) + 12)
+
+      val tc10_alpha2 = alpha(rand.nextInt(11) + 12)
+
+      TxnUtils.runTxnInstance(tc10_alpha1.toString(), tc10_alpha2.toString(), n)
+
     }
-    
+
     case "gend" => {
-      
+
       val in_datacsv = args(1)
       val skipHeader = args(2).toBoolean
-      AimsUtils.generateDataFiles(in_datacsv, skipHeader)
+      AimsUtils.generateAMPLEDataFiles(in_datacsv, skipHeader)
+      println("Done with data file generation!")
+
     }
-    
+
     case _ => {
       printUsage()
     }
   }
-  
-  
-//   create table Randomdata (
-//    id serial not null primary key,
-//    fname varchar(64) not null,
-//    lname varchar(64) not null,
-//    bname varchar(64) not null,
-//    dob date not null,
-//    ncars SMALLINT not null,
-//    bankbalance FLOAT not null,
-//    addressline varchar(256) not null,
-//    city varchar(64) not null,
-//    zipcode varchar(10) not null
-//  )
-  case class Randomdata(id: Long, fname: String, lname: String, bname: String,
-      dob:java.util.Date, ncars:Int, bankbalance:Float, addressline:String, city:String, zipcode:String)
-      
-      
-  object Randomdata extends SQLSyntaxSupport[Randomdata] {
-    override val tableName = "Randomdata"
-    
-    def apply(o: SyntaxProvider[Randomdata])(rs: WrappedResultSet): Randomdata = apply(o.resultName)(rs)
-    
-//    def apply(rs: WrappedResultSet) = new Randomdata(
-//      rs.long("id"), rs.string("fname"), rs.string("lname"), rs.string("bname"),
-//      rs.date("dob"), rs.int("ncars"), rs.float("bankbalance"), 
-//      rs.string("addressline"), rs.string("city"), rs.string("zipcode"))
-    
-    def apply(o: ResultName[Randomdata])(rs: WrappedResultSet): Randomdata = {
-      new Randomdata(rs.long(o.id), rs.string(o.fname), rs.string(o.lname), rs.string(o.bname),
-          rs.date(o.dob), rs.int(o.ncars), rs.float(o.bankbalance), 
-          rs.string(o.addressline), rs.string(o.city), rs.string(o.zipcode))
+
+  def loadCountries(): (List[String], List[Int]) = {
+    val lines = scala.io.Source.fromFile("countries_data.csv").getLines()
+    lines.next() // skipp header
+
+    val resLabels = ListBuffer[String]()
+    val resDist = ListBuffer[Int]()
+
+    var i = 0
+    for (line <- lines) {
+      val sline = line.split(",")
+      resLabels += sline(0)
+      val n = sline(1).toInt
+
+      for (j <- (1 to n)) {
+        resDist += i
+      }
+
+      i = i + 1
     }
-  }
-  
-  def printUsage() = {
-    println("Usage: DemoWorkloadDriver [init|load n|run m] , n = number of data objects to insert, m number of transaction instances to run, m must be a multple of 10")
+
+    return (resLabels.toList, resDist.toList)
+
   }
 
+  //   create table Randomdata (
+  //    id serial not null primary key,
+  //    fname varchar(64) not null,
+  //    lname varchar(64) not null,
+  //    bname varchar(64) not null,
+  //    dob date not null,
+  //    ncars SMALLINT not null,
+  //    bankbalance FLOAT not null,
+  //    addressline varchar(256) not null,
+  //    city varchar(64) not null,
+  //    zipcode varchar(10) not null
+  //  )
+
+  def printUsage() = {
+    println("Usage: DemoWorkloadDriver [init|load n|run m] , n = number of data objects to insert, m number of transaction instances to run, m must be a multiple of 10")
+  }
+
+  AIMSLogger.closeLoggers()
+  epool.shutdown()
+
+}
+
+case class Randomdata(id: Long, fname: String, lname: String, bname: String,
+                      dob: java.util.Date, ncars: Int, bankbalance: Float, addressline: String, city: String, zipcode: String, country: String)
+
+object Randomdata extends SQLSyntaxSupport[Randomdata] {
+  override val tableName = "Randomdata"
+
+  def apply(o: SyntaxProvider[Randomdata])(rs: WrappedResultSet): Randomdata = apply(o.resultName)(rs)
+
+  //  def apply(o: ResultName[Randomdata])(rs: WrappedResultSet): Randomdata = {
+  //    new Randomdata(rs.long(o.id), rs.string(o.fname), rs.string(o.lname), rs.string(o.bname),
+  //      rs.date(o.dob), rs.int(o.ncars), rs.float(o.bankbalance),
+  //      rs.string(o.addressline), rs.string(o.city), rs.string(o.zipcode), rs.string(o.country))
+  //  }
+
+  def apply(o: ResultName[Randomdata])(rs: WrappedResultSet): Randomdata = {
+    new Randomdata(rs.long(1), rs.string(2), rs.string(3), rs.string(4),
+      rs.date(5), rs.int(6), rs.float(7),
+      rs.string(8), rs.string(9), rs.string(10), rs.string(11))
+  }
+}
+
+class IDSAlert(txid: Long, delay: Long) extends Runnable {
+  implicit val session = AutoSession
+  def run() {
+//    println(s"alerting in $delay ms")
+    Thread.sleep(delay)
+//    println("alerting now!! "+txid+ " is malicious")
+    val ret = sql"select alertMTxn(${txid});".execute().apply()
+//    println("done alerting, ret = "+ret)
+
+  }
 }
