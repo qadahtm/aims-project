@@ -83,6 +83,8 @@ object DemoWorkloadDriver extends App {
 
       val sdf = new SimpleDateFormat("dd/M/yyyy");
       val r = scala.util.Random
+      
+      var ci = 0
       for (i <- (1 to n)) {
         val fname = df.getFirstName()
         val lname = df.getLastName
@@ -95,7 +97,9 @@ object DemoWorkloadDriver extends App {
         val address = df.getAddress()
         val city = df.getCity()
         val zipcode = df.getNumberText(5)
-        val country = countryLabels(countryDist(r.nextInt(countryDist.size)))
+        
+        ci = ci % countryLabels.size
+        val country = countryLabels(ci)
 
         //         println(s"$fname $lname")
         //         println("dob : "+sdf.format(dob))
@@ -104,6 +108,7 @@ object DemoWorkloadDriver extends App {
         //         println(country)
 
         sql"insert into randomdata (fname, lname, bname, dob, ncars, bankbalance, addressline, city, zipcode, country) values (${fname}, ${lname}, ${business}, ${dob}, ${ncar}, ${bbalance}, ${address}, ${city}, ${zipcode}, ${country})".update.apply()
+        ci = ci + 1
       }
     }
 
@@ -121,7 +126,10 @@ object DemoWorkloadDriver extends App {
     }
 
     case "runconv" => {
-      TxnUtils.runConfWorkloadTry2(countryLabels)
+      val n1 = args(1).toInt
+      val n2 = args(2).toInt
+      
+      TxnUtils.runConfWorkloadTry2(countryLabels, n1, n2)
 //      TxnUtils.runConvWorkload(countryLabels)
     }
 

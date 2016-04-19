@@ -153,28 +153,32 @@ object TxnUtils {
     
   }
   
-  def runConfWorkloadTry2(countryLabels:List[String]) = {
+  def runConfWorkloadTry2(countryLabels:List[String], n1:Int, n2:Int) = {
     var ci = 0
     var ci2 = 0
-    for (i <- (1 to 200)){
+    var totaltxn = 0
+    for (i <- (1 to countryLabels.size)){
       if (ci == countryLabels.size) ci = 0
       
       val country1 = countryLabels(ci)
-      for (j <- (1 to 100)){
+      for (j <- (1 to n1)){
         runClassATransaction(countryLabels.indexOf(country1),countryLabels)  
+        totaltxn = totaltxn +1
       }
       // pick a destination country at random.  
-//      val cr = countryLabels.slice(ci, 
+      do{
+        ci2 = scala.util.Random.nextInt(countryLabels.size)
+      } while (ci == ci2)
       
-//      for (j <- (1 to 10) {
-        
-//        runClassBTransaction(_scountry, _dcountry, countryLabels)
-//      }
-      
-//      val ci2 = scala.util.Random.nextInt(countryLabels.size) 
+      for (j <- (1 to n2)) {        
+        runClassBTransaction(ci, ci2, countryLabels)
+        totaltxn = totaltxn + 1
+      }      
       
       ci = ci + 1
     }
+    
+    println("Total number of txn instances executed = "+totaltxn)
   }
   
   

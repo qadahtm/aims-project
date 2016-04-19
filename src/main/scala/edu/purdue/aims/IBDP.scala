@@ -569,6 +569,8 @@ object AimsUtils {
     
     // creating file for transaction instances
     println("creating transaction fps file")
+    
+    val fpa = Array.ofDim[Int](dolabels.size)
     val pw_t = new PrintWriter(new File("t.dat" ))
     pw_t.print("txncId")
     for (o_i <- dolabels){
@@ -583,6 +585,7 @@ object AimsUtils {
 //        if (txni.fp.map(_.oid).contains(i)){
         if (txni.rs.map(_.oid).contains(i) || txni.ws.map(_.oid).contains(i)){
           pw_t.print("1")  
+          fpa(i) = fpa(i) + 1
         }
         else pw_t.print("0")        
       }
@@ -591,7 +594,12 @@ object AimsUtils {
       pw_t.flush()
     }
      pw_t.close
-    
+     
+     // asset that all data objects are assigned to some footprint
+    for (o_i <- fpa){
+      assert(o_i > 0)
+    }
+     
     // creating files for edges
      println("creating edges file")
 //    println("DDG")
@@ -609,7 +617,7 @@ object AimsUtils {
     
     for (i <- (0 to evarm.size-1)){      
       for (j <- (0 to evarm(i).size-1)){
-        if (evarm(i)(j) == 1) println(s"edge between o($i) and o($j)")
+//        if (evarm(i)(j) == 1) println(s"edge between o($i) and o($j)")
         if (j > 0) pw_e.print(",")
         pw_e.print(evarm(i)(j))
       }      
