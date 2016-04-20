@@ -44,6 +44,7 @@ libraryDependencies ++= Seq(
   "com.assembla.scala-incubator" %% "graph-core" % "1.10.0",
   "org.scalikejdbc" %% "scalikejdbc"       % "2.3.5",
   "org.jliszka" %% "probability-monad" % "1.0.1",
+  "org.scalatest" %% "scalatest" % "2.2.6" % "test",
   "com.github.scopt" %% "scopt" % "3.4.0",
   "org.postgresql" % "postgresql" % "9.4.1208",
   "ch.qos.logback"  %  "logback-classic"   % "1.1.3",

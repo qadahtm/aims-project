@@ -41,10 +41,13 @@ object DemoWorkloadDriver extends App {
     singleLineMode = true,
     logLevel = 'DEBUG)
 
-  val (countryLabels, countryDist) = loadCountries();
-  println("Country data loaded. Total coutnries: " + countryLabels.size)
+  val (tcountryLabels, countryDist) = loadCountries();
+  
   //  println(countryDist.size)
-
+  val countryLabels = tcountryLabels.slice(0, 5)
+  println(s"Country data loaded. Total coutnries: ${tcountryLabels.size}, selected countries: ${countryLabels.size}")
+  
+  
   if (args.size == 0) {
     printUsage()
     sys.exit(0)
@@ -55,7 +58,7 @@ object DemoWorkloadDriver extends App {
   mode match {
     case "init" => {
       sql"""
-  create table Randomdata (
+  create or replace table Randomdata (
     id serial not null primary key,
     fname varchar(64) not null,
     lname varchar(64) not null,
@@ -72,6 +75,7 @@ object DemoWorkloadDriver extends App {
 
       println("Created Randomdata table")
     }
+    
     case "load" => {
       println("Loading initial data")
       val n = args(1).toInt
@@ -111,7 +115,7 @@ object DemoWorkloadDriver extends App {
         ci = ci + 1
       }
     }
-
+   
     case "runc" => {
       println("Running complex workload")
       val n = args(1).toInt
@@ -128,8 +132,11 @@ object DemoWorkloadDriver extends App {
     case "runconv" => {
       val n1 = args(1).toInt
       val n2 = args(2).toInt
+      val n3 = args(3).toInt
+      val n4 = args(4).toInt 
       
-      TxnUtils.runConfWorkloadTry2(countryLabels, n1, n2)
+      TxnUtils.runConfWorkloadTry3(countryLabels, n1, n2, n3, n4)
+//      TxnUtils.runConfWorkloadTry2(countryLabels, n1, n2)
 //      TxnUtils.runConvWorkload(countryLabels)
     }
 
@@ -246,10 +253,15 @@ object DemoWorkloadDriver extends App {
 
       val in_datacsv = args(1)
       val skipHeader = args(2).toBoolean
-      AimsUtils.generateAMPLEDataFiles(in_datacsv, skipHeader)
+      val k = args(3).toInt
+      val q = args(4).toInt
+      
+      AimsUtils.genAMPLEDatFile(in_datacsv, skipHeader, k, q)
+//      AimsUtils.generateAMPLEDataFiles(in_datacsv, skipHeader)
       println("Done with data file generation!")
 
     }
+   
 
     case _ => {
       printUsage()

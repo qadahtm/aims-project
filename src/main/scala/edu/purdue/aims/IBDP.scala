@@ -403,17 +403,6 @@ object IBDP extends App {
     } 
   }
   
-  def fill0_evarmInt(evarm:Array[Array[Int]]) = {
-    // fill in zeros 
-    for (i <- (0 to evarm.size-1)){
-      for (j <- (0 to evarm(i).size-1)){
-        if (evarm(i)(j) == null){
-          evarm(i)(j) = 0
-        }
-      }
-    }
-  }
-  
   def fill0_evarm(evarm:Array[Array[IntVar]] , _solver:Solver) = {
     // fill in zeros 
     for (i <- (0 to evarm.size-1)){
@@ -535,6 +524,255 @@ case class TransactionFootprint(val cid:Int, val rs:List[DataObject], val ws:Lis
 
 
 object AimsUtils {
+  
+  def genAMPLEDatFile(in_datacsv:String, skipHeader:Boolean, k:Int, q:Int){
+    println("Parsing workload trace file")
+    
+    val parsed =  readWTFromLogTable(in_datacsv, skipHeader)
+    val dolabels = parsed._1
+    val txnlabels = parsed._2
+    val txnClasslabels = parsed._3
+    val WTres = parsed._4
+    
+    println("number of classes ="+txnClasslabels.size)
+//    txnClasslabels.foreach { println }
+    println("number of tx instance ="+WTres.size)
+    
+//    for (ti <- WTres){
+//      println(s"${ti.cid}, ${ti.ts}, rs = ${ti.rs}, ws = ${ti.ws}")
+//    }
+    
+    val WTFP = WTres.map { x => {
+      TransactionFootprint(x.cid, x.rs,x.ws)
+    } }.groupBy { x => {
+      x.cid
+    } }.mapValues { x => {
+      var res = x(0)
+      for (i <- (1 to x.size-1)){
+        res = TransactionFootprint(res.cid, res.rs.union(x(i).rs), res.ws.union(x(i).ws))
+      }
+      res
+    } }.map { _._2 }.toList
+    
+    val N = dolabels.size
+    
+    // creating file for transaction instances
+//    println("creating transaction fps file block")
+    
+//    val fpa = Array.ofDim[Int](dolabels.size)
+//    val pw_t = new PrintWriter(new File("t.dat" ))
+//    pw_t.print("txncId")
+//    for (o_i <- dolabels){
+//      pw_t.print(s",$o_i")  
+//    }
+//    pw_t.println()
+//    for (txni <- WTFP) {
+//      // create a datafile for T
+//      pw_t.print(txnClasslabels(txni.cid))
+//      for (i <- (0 to dolabels.size-1)){
+//        pw_t.print(",")
+////        if (txni.fp.map(_.oid).contains(i)){
+//        if (txni.rs.map(_.oid).contains(i) || txni.ws.map(_.oid).contains(i)){
+//          pw_t.print("1")  
+//          fpa(i) = fpa(i) + 1
+//        }
+//        else pw_t.print("0")        
+//      }
+//      
+//      pw_t.println()     
+//      pw_t.flush()
+//    }
+//     pw_t.close
+//     
+//     // asset that all data objects are assigned to some footprint
+//    for (o_i <- fpa){
+//      assert(o_i > 0)
+//    }
+     
+    // creating files for edges
+//     println("creating edges file")
+////    println("DDG")
+//   val pw_e = new PrintWriter(new File("e.dat" ))
+//    for ((o_i,i) <- dolabels.zipWithIndex){
+//      if (i >0) pw_e.print(",")
+//      pw_e.print(s"$o_i")  
+//    }
+//    pw_e.println()
+//    
+    val evarm = Array.ofDim[Int](N,N)
+    WTres.zipWithIndex.foreach { case (txni,j) => {
+      fill1_evarmInt(txni, evarm)
+    } }  
+    
+//    for (i <- (0 to evarm.size-1)){      
+//      for (j <- (0 to evarm(i).size-1)){
+////        if (evarm(i)(j) == 1) println(s"edge between o($i) and o($j)")
+//        if (j > 0) pw_e.print(",")
+//        pw_e.print(evarm(i)(j))
+//      }      
+//      pw_e.println()
+//      pw_e.flush()
+//    }
+//   
+//    pw_e.close
+//    
+    
+    // creating data file for weights
+//    println("creating weights file")
+//    val pw_w = new PrintWriter(new File("w.dat" ))
+//    println("going to compute weights")
+    val weights = compute_weights(dolabels, WTres)
+//    println("done: weights are computed")
+//    
+//    var i = 0
+//    for(w_i <- weights) {
+//      pw_w.println(dolabels(i) +","+w_i )
+//      i = i +1
+//    }
+//    
+//    pw_w.close
+    
+    
+    val pw = new PrintWriter(new File("syng.dat"))
+    // creating header block
+    println("creating AMPLE data file")
+    println("creating header")
+    val sb = new StringBuilder()
+    sb.append("set K := ")
+    for (i <- (0 to k-1)) {
+      if (i > 0) sb.append(" ")
+      sb.append("k"+i)
+    }
+    sb.append(";")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    sb.append("set N := ")
+    for (i <- (0 to N-1)){
+      if (i > 0) sb.append(" ")
+      sb.append("n"+i)      
+    }
+    sb.append(";")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    val L = WTFP.size
+    
+    sb.append("set L := ")
+    for (i <- (0 to L-1)){
+      if (i > 0) sb.append(" ")
+      sb.append("l"+i)      
+    }
+    sb.append(";")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    sb.append("param n := ")
+    sb.append(dolabels.size)
+    sb.append(";")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    sb.append("param k := ")
+    sb.append(k)
+    sb.append(";")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    sb.append("param q := ")
+    sb.append(q)
+    sb.append(";")
+    pw.println(sb.toString())
+    sb.clear()
+     
+    pw.println("# DDG (adjacency matrix)")
+    pw.println("param E:")
+    
+    sb.append("     ") // space before 
+    for (i <- (0 to N-1)){
+      if (i > 0) sb.append(" ")
+      sb.append("n"+i)      
+    }
+    sb.append(" :=")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    // print e-values for each row
+    for (i <- (0 to N-1)){
+      // print label first 
+      sb.append("n"+i)
+      
+      for (j <- (0 to N-1)){
+         sb.append(" ")
+         sb.append(evarm(i)(j))
+      }      
+      
+      if (i == N-1) sb.append(";")
+      pw.println(sb.toString())
+      sb.clear()      
+    }
+    
+    pw.println("# Vertices weight vector")
+    pw.println("param W:")
+    
+    sb.append("     ") // space before 
+    for (i <- (0 to N-1)){
+      if (i > 0) sb.append(" ")
+      sb.append("n"+i)
+    }
+    sb.append(" :=")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    sb.append("w1  ")
+    for(w_i <- weights) {
+      sb.append(" "+w_i)
+    }
+    sb.append(";")
+    
+    pw.println(sb.toString())
+    sb.clear()
+    
+    pw.println("# Transaction assignment")
+    pw.println("param T:")
+    
+    sb.append("     ") // space before 
+    for (i <- (0 to N-1)){
+      if (i > 0) sb.append(" ")
+      sb.append("n"+i)
+    }
+    sb.append(" :=")
+    pw.println(sb.toString())
+    sb.clear()
+    
+    for (i <- (0 to L-1)){
+      // print label first 
+      sb.append("l"+i)
+
+      val lfp = WTFP(i)
+      
+      for (j <- (0 to N-1)){
+         sb.append(" ")
+         if (lfp.rs.map(_.oid).contains(j) || lfp.ws.map(_.oid).contains(j)){
+           sb.append("1")
+         }
+         else{
+           sb.append("0")
+         }
+      }   
+      
+      if (i == L-1) sb.append(";")
+      pw.println(sb.toString())
+      sb.clear()      
+    }
+    
+    
+    
+    
+    
+    pw.close()
+  }
+  
    def generateAMPLEDataFiles(in_datacsv:String, skipHeader:Boolean) ={
     println("Parsing workload trace file")
 //    var parsed:(List[String], List[String], )
