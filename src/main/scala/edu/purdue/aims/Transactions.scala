@@ -189,11 +189,11 @@ object TxnUtils {
     var totaltxn = 0
 
     // allowed inter-country transactions (by indexes)
-    val intercmap = Map(1 -> (2, "[A-C]"),
-      0 -> (3, "[A-C]"),
-      4 -> (1, "[A-C]"),
+    val intercmap = Map(0 -> (1, "[A-C]"),
+      1 -> (2, "[A-C]"),
       2 -> (3, "[A-C]"),
-      3 -> (4, "[A-C]"))
+      3 -> (4, "[A-C]"),
+      4 -> (0, "[A-C]"))
       
       
       // Currently, hardcoded for 5 countries

@@ -57,8 +57,10 @@ object DemoWorkloadDriver extends App {
 
   mode match {
     case "init" => {
+      sql"drop table if exists Randomdata".execute.apply()
+      
       sql"""
-  create or replace table Randomdata (
+  create table Randomdata (
     id serial not null primary key,
     fname varchar(64) not null,
     lname varchar(64) not null,
@@ -138,6 +140,67 @@ object DemoWorkloadDriver extends App {
       TxnUtils.runConfWorkloadTry3(countryLabels, n1, n2, n3, n4)
 //      TxnUtils.runConfWorkloadTry2(countryLabels, n1, n2)
 //      TxnUtils.runConvWorkload(countryLabels)
+    }
+    
+    case "createibs" => {
+      
+      // IB creation
+      sql"drop table if exists ibd".execute.apply()
+      
+      sql"""
+      create table ibd (
+        object_id bigint not null,
+        ib smallint not null
+      )
+      """.execute.apply()
+      
+      val ro = Randomdata.syntax("r")
+      val regex = "[A-C]"
+      
+      val c0 = sql"select * from randomdata where country = ${countryLabels(0)}".map(Randomdata(ro)).list().apply()
+      val c0a = sql"select * from randomdata where country = ${countryLabels(1)} and fname ~ ${regex}".map(Randomdata(ro)).list().apply()
+      val comb0 = (c0 ++ c0a)
+      for (c <- comb0){
+        sql"insert into ibd values(${c.id},0)".execute.apply()
+      }
+      println(s"IB0 has ${comb0.size} objects")
+      
+      val c1 = sql"select * from randomdata where country = ${countryLabels(1)}".map(Randomdata(ro)).list().apply()
+      val c1a = sql"select * from randomdata where country = ${countryLabels(2)} and fname ~ ${regex}".map(Randomdata(ro)).list().apply()
+      val comb1 = (c1 ++ c1a)
+      for (c <- comb1){
+        sql"insert into ibd values(${c.id},1)".execute.apply()
+      }
+      println(s"IB1 has ${comb1.size} objects")
+      
+      val c2 = sql"select * from randomdata where country = ${countryLabels(2)}".map(Randomdata(ro)).list().apply()
+      val c2a = sql"select * from randomdata where country = ${countryLabels(3)} and fname ~ ${regex}".map(Randomdata(ro)).list().apply()
+      val comb2 = (c2 ++ c2a)
+      for (c <- comb2){
+        sql"insert into ibd values(${c.id},2)".execute.apply()
+      }
+      println(s"IB2 has ${comb2.size} objects")
+      
+      
+      val c3 = sql"select * from randomdata where country = ${countryLabels(3)}".map(Randomdata(ro)).list().apply()
+      val c3a = sql"select * from randomdata where country = ${countryLabels(4)} and fname ~ ${regex}".map(Randomdata(ro)).list().apply()
+      val comb3 = (c3 ++ c3a)
+      for (c <- comb3){
+        sql"insert into ibd values(${c.id},3)".execute.apply()
+      }
+      println(s"IB3 has ${comb3.size} objects")
+      
+      val c4 = sql"select * from randomdata where country = ${countryLabels(4)}".map(Randomdata(ro)).list().apply()
+      val c4a = sql"select * from randomdata where country = ${countryLabels(0)} and fname ~ ${regex}".map(Randomdata(ro)).list().apply()
+      val comb4 = (c4 ++ c4a)
+      for (c <- comb4){
+        sql"insert into ibd values(${c.id},4)".execute.apply()
+      }
+      println(s"IB4 has ${comb4.size} objects")
+      
+      
+      
+      
     }
 
     case "runm" => {
