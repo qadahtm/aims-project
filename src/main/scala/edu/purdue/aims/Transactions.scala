@@ -194,16 +194,9 @@ object TxnUtils {
       2 -> (3, "[A-C]"),
       3 -> (4, "[A-C]"),
       4 -> (0, "[A-C]"))
-      
-      
-      // Currently, hardcoded for 5 countries
-    val multi = Map(
-        0 -> List(0,0,0),
-        1 -> List(1,1,1),
-        2 -> List(2,2,2),
-        3 -> List(3,3,3),
-        4 -> List(4,4,4)
-        )
+     
+    val fanmax = 10
+    val fanmin = 5
 
     for (i <- (1 to countryLabels.size)) {
       if (ci == countryLabels.size) ci = 0
@@ -223,13 +216,15 @@ object TxnUtils {
       
       for (j <- (1 to n3)){
         val sci = ci
-        val dcis = multi(ci)
+        val rfan = scala.util.Random.nextInt(6) + 5
+        val dcis = List.fromArray(Array.fill(rfan)(ci))
         runClassCTransaction2(sci, dcis, countryLabels)
         totaltxn = totaltxn + 1
       }
       
-      for (j <- (1 to n3)){
-        val scis = multi(ci)
+      for (j <- (1 to n4)){
+        val rfan = scala.util.Random.nextInt(6) + 5
+        val scis = List.fromArray(Array.fill(rfan)(ci))
         val dci = ci
         runClassDTransaction2(scis, dci, countryLabels)
         totaltxn = totaltxn + 1

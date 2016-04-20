@@ -43,16 +43,15 @@ The above command will load 50K data objects into the database, in a table calle
 ```sh
 $ ./target/pack/bin/DemoWorkloadDriver run 100
 ```
+The above command will run 10 transaction instances from each transaction class. The number must be a multiple of 10 as it will be equally distributed among the transaction classes.
 
 ### World-wide Monay transfer transaction workload
 Simulates intra-country and inter-country money transfer transactions. Example:
 
 ```sh
-$ ./target/pack/bin/DemoWorkloadDriver runconv 100 10
+$ ./target/pack/bin/DemoWorkloadDriver runconv 100 10 20 50
 ```
-In the above example, there will be 100 intra-country transactions, and 10 inter-country transaction per country.
-
-The above command will run 10 transaction instances from each transaction class. The number must be a multiple of 10 as it will be equally distributed among the transaction classes.
+In the above example, there will be 100 intra-country transactions (one-to-one), 10 inter-country transaction per country, 20 intra-country high fan-out transaction (one-to-many), and 50 intra-country high fan-in transaction (many-to-one).
 
 ## Tested OS
 MAC OSX, and Ubuntu Linux
