@@ -696,7 +696,8 @@ object TxnUtils {
       
       mtrans += txid
       val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
-      "class" -> JsString("A"), "ci" -> JsNumber(ci), "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      "class" -> JsString("A"), "ci" -> JsNumber(ci), 
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true), "mdelay" -> JsNumber(ddelay))
       AIMSLogger.logTransaction(txspec)
       epool.execute(new IDSAlert(txid, ddelay))
     }
@@ -775,7 +776,7 @@ object TxnUtils {
       val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
       "class" -> JsString("B"), "sci" -> JsNumber(countryLabels.indexOf(_scountry)), 
       "dci" -> JsNumber(countryLabels.indexOf(_dcountry)), 
-      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true), "mdelay" -> JsNumber(ddelay))
       AIMSLogger.logTransaction(txspec)
       epool.execute(new IDSAlert(txid, ddelay))
     }
@@ -862,7 +863,7 @@ object TxnUtils {
       mtrans += txid
       val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
       "class" -> JsString("C"), "ci" -> JsNumber(sci), 
-      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true), "mdelay" -> JsNumber(ddelay))
       AIMSLogger.logTransaction(txspec)
       epool.execute(new IDSAlert(txid, ddelay))
     }
@@ -945,7 +946,7 @@ object TxnUtils {
       mtrans += txid
       val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
       "class" -> JsString("D"), "ci" -> JsNumber(scis(0)), 
-      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true), "mdelay" -> JsNumber(ddelay))
       AIMSLogger.logTransaction(txspec)
       epool.execute(new IDSAlert(txid, ddelay))      
     }

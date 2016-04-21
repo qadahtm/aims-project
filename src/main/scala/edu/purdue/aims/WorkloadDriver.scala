@@ -269,6 +269,8 @@ object DemoWorkloadDriver extends App {
             
           } // transcation end
           if (m){
+            val mdelay = txnjs.fields.get("mdelay").get.asInstanceOf[JsNumber].value.toLong
+            epool.execute(new IDSAlert(txid, mdelay))
             mtxncount = mtxncount +1
           }
           else {
