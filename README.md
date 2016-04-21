@@ -16,7 +16,7 @@ You need git to be installed and configured proparly.
 $ git clone https://github.com/qadahtm/aims-project ; cd aims-project
 ```
 
-### Usage procedure
+### Usage 
 Most probably you want to run the following in sequence.
 
 1. To build the project:
@@ -49,9 +49,32 @@ The above command will run 10 transaction instances from each transaction class.
 Simulates intra-country and inter-country money transfer transactions. Example:
 
 ```sh
-$ ./target/pack/bin/DemoWorkloadDriver runconv 100 10 20 50
+$ ./target/pack/bin/DemoWorkloadDriver runconv 100 10 20 50 false
 ```
-In the above example, there will be 100 intra-country transactions (one-to-one), 10 inter-country transaction per country, 20 intra-country high fan-out transaction (one-to-many), and 50 intra-country high fan-in transaction (many-to-one).
+In the above example, there will be 100 intra-country transactions (one-to-one), 10 inter-country transaction per country, 20 intra-country high fan-out transaction (one-to-many), and 50 intra-country high fan-in transaction (many-to-one). No malicious transactions will be marked. 
+
+#### Running mixed workload (Normal + Malicious)
+
+When running a mixed workload, additional paramters are needed. First, set the fifth parameter to `true` to enable the injection of malicious transactions. The sixth parameter is the percentage of malicious transactions; in this case its `5%`. Finally, the seventh parameter is the detection delay in milliseconds. In the following example, an alert will be generated after `1` second of commit time. 
+
+```sh
+$ ./target/pack/bin/DemoWorkloadDriver runconv 10 5 8 3 true 0.05 1000
+```
+
+#### Replaying workload traces
+When running a workload using the `runconv` command, a workload trace is generated in a file called `wltrace.json`. This file can be used to replay the exact workload again. First, you need to make a copy of the file as follows:
+
+```sh
+$ cp wltrace.json mytrace.json
+```
+
+Then, replay the workload as follows:
+
+```sh
+$ ./target/pack/bin/DemoWorkloadDriver replay mytrace.json
+```
+
+Note: If malicious transaction were injected into the workload, they will be replayed as well and alerts will be generated for them. 
 
 ## Tested OS
 MAC OSX, and Ubuntu Linux

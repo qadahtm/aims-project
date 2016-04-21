@@ -1,11 +1,15 @@
 package edu.purdue.aims
 
-import scala.collection.mutable.ListBuffer
-import scalikejdbc._
-import scala.util.Random
-import java.io.PrintWriter
-import java.io.File
 import java.util.concurrent.ExecutorService
+import scala.collection.mutable.ListBuffer
+import scala.util.Random
+import scalikejdbc._
+import spray.json.JsNumber
+import spray.json.JsObject
+import spray.json.JsString
+import spray.json.JsArray
+import spray.json.JsBoolean
+import java.util.concurrent.Executors
 
 object TxnUtils {
 
@@ -16,6 +20,40 @@ object TxnUtils {
   val UPDATE_OP = 3
   
   val default_regex = "[A-C]"
+  
+  val epool = Executors.newFixedThreadPool(5); 
+
+  var ddelay = 500L; //millisecconds
+  var mworkload = false;
+  var mprob = 0.1f // default probability 10%
+  val mtrans = ListBuffer[Long]()
+  var maxm:Long = 0
+
+  def setDDelay(_ddelay: Long) = {
+    ddelay = _ddelay
+  }
+
+  def setMWorkload(is: Boolean) = {
+    mworkload = is
+  }
+  
+  def setMMax(max:Long) = {   
+    maxm = max
+  }
+  
+  def getMTxCount() = mtrans.size
+  
+  val mdist = Array.ofDim[Boolean](100)
+
+  def setMProb(p: Float) = {
+    assert(p > 0.0 && p < 1.0)
+    mprob = p
+    val pm = (p * 100).toInt
+    
+    for (i <- (0 to pm - 1)) {
+      mdist(i) = true
+    }
+  }
 
   def runConvWorkload(countryLabels: List[String]) = {
     // 200 tx instances
@@ -183,7 +221,7 @@ object TxnUtils {
     println("Total number of txn instances executed = " + totaltxn)
   }
 
-  def runConfWorkloadTry3(countryLabels: List[String], n1: Int, n2: Int, n3:Int, n4:Int) = {
+  def runConfWorkloadTry3(countryLabels: List[String], n1: Int, n2: Int, n3: Int, n4: Int) = {
     var ci = 0
     var ci2 = 0
     var totaltxn = 0
@@ -194,7 +232,7 @@ object TxnUtils {
       2 -> (3, "[A-C]"),
       3 -> (4, "[A-C]"),
       4 -> (0, "[A-C]"))
-     
+
     val fanmax = 10
     val fanmin = 5
 
@@ -213,16 +251,16 @@ object TxnUtils {
         runClassBTransaction(ci, ci2, fnamepred, countryLabels)
         totaltxn = totaltxn + 1
       }
-      
-      for (j <- (1 to n3)){
+
+      for (j <- (1 to n3)) {
         val sci = ci
         val rfan = scala.util.Random.nextInt(6) + 5
         val dcis = List.fromArray(Array.fill(rfan)(ci))
         runClassCTransaction2(sci, dcis, countryLabels)
         totaltxn = totaltxn + 1
       }
-      
-      for (j <- (1 to n4)){
+
+      for (j <- (1 to n4)) {
         val rfan = scala.util.Random.nextInt(6) + 5
         val scis = List.fromArray(Array.fill(rfan)(ci))
         val dci = ci
@@ -326,7 +364,7 @@ object TxnUtils {
       val country1 = tp(Random.nextInt(tp.size))
       runClassATransaction(countryLabels.indexOf(country1), countryLabels).foreach { x =>
         {
-          // flip a biased coin to determin if the transaction is malicious
+          // flip a biased coin to determine if the transaction is malicious
           if (mtrans.size < maxm && mdist(Random.nextInt(mdist.size))) {
             mtrans += x(1)
             val loge = (x ++ List(1L))
@@ -466,7 +504,7 @@ object TxnUtils {
       val rn2 = (rn + 1) % tp.size
       val country1 = tp(rn)
       val country2 = tp(rn2)
-      runClassBTransaction(country1, country2,"[A-C]", countryLabels).foreach { x =>
+      runClassBTransaction(country1, country2, "[A-C]", countryLabels).foreach { x =>
         {
           if (mtrans.size < maxm && mdist(Random.nextInt(mdist.size))) {
             mtrans += x(1)
@@ -553,7 +591,7 @@ object TxnUtils {
       val rn2 = (rn + 1) % tp.size
       val country1 = tp(rn)
       val country2 = tp(rn2)
-      runClassBTransaction(country1, country2,"[A-C]", countryLabels)
+      runClassBTransaction(country1, country2, "[A-C]", countryLabels)
     }
 
     for (i <- (1 to nn)) {
@@ -562,7 +600,7 @@ object TxnUtils {
       val rn2 = (rn + 1) % tp.size
       val country1 = tp(rn)
       val country2 = tp(rn2)
-      runClassBTransaction(country1, country2, "[A-C]",countryLabels)
+      runClassBTransaction(country1, country2, "[A-C]", countryLabels)
     }
 
   }
@@ -584,6 +622,9 @@ object TxnUtils {
     var ci = in_ci
 
     stime = System.currentTimeMillis()
+
+    val sqlBuffer = ListBuffer[JsObject]()
+
     DB localTx { implicit session =>
       {
 
@@ -592,9 +633,17 @@ object TxnUtils {
         }, session)(0)
 
         var from = List[Randomdata]()
+
+        val fromsql = withSQL {
+          select
+            .from(Randomdata as r)
+            .where.eq(r.country, countryLabels(ci))
+            .append(sqls"order by RANDOM()")
+            .limit(1)
+        }
+
         do {
           if (ci == countryLabels.size) ci = 0
-
           from = withSQL {
             select
               .from(Randomdata as r)
@@ -605,6 +654,7 @@ object TxnUtils {
           if (from.size == 0) ci = ci + 1
         } while (from.size == 0)
 
+        sqlBuffer += JsObject("op" -> JsNumber(READ_OP), "oid" -> JsNumber(from(0).id))
         res += List(System.currentTimeMillis, txid, from(0).id, READ_OP, ci)
 
         val to = withSQL {
@@ -626,36 +676,61 @@ object TxnUtils {
 
         sql"update Randomdata set bankbalance = ${snbal} where id = ${sid}".update.apply()
         res += List(System.currentTimeMillis, txid, sid, UPDATE_OP, ci)
+        sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(from(0).id),
+          "obal" -> JsNumber(from(0).bankbalance),
+          "nbal" -> JsNumber(snbal))
 
         sql"update Randomdata set bankbalance = ${dnbal} where id = ${did}".update.apply()
         res += List(System.currentTimeMillis(), txid, did, UPDATE_OP, ci)
+        sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(to(0).id),
+          "obal" -> JsNumber(to(0).bankbalance),
+          "nbal" -> JsNumber(dnbal))
       }
     }
     ctime = System.currentTimeMillis()
     AIMSLogger.logResponseTime(txid, stime, ctime)
+    
+    
+    // flip a biased coin to determine if the transaction is malicious
+    if (mworkload && mtrans.size < maxm  && mdist(Random.nextInt(mdist.size))) {
+      
+      mtrans += txid
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("A"), "ci" -> JsNumber(ci), "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      AIMSLogger.logTransaction(txspec)
+      epool.execute(new IDSAlert(txid, ddelay))
+    }
+    else {
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("A"), "ci" -> JsNumber(ci), "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(false))
+      AIMSLogger.logTransaction(txspec)
+    }
+    
     res.foreach { AIMSLogger.logTxAccessEntry(_) }
+    
     return res.toList
   }
 
   // class B: run a transfer between two random accounts from two different countries. 
-  def runClassBTransaction(_sci: Int, _dci: Int, dregex:String, countryLabels: List[String]): List[List[Long]] = {
+  def runClassBTransaction(_sci: Int, _dci: Int, dregex: String, countryLabels: List[String]): List[List[Long]] = {
     runClassBTransaction(countryLabels(_sci), countryLabels(_dci), dregex, countryLabels)
   }
 
-  def runClassBTransaction(_scountry: String, _dcountry: String, dregex:String, countryLabels: List[String]): List[List[Long]] = {
+  def runClassBTransaction(_scountry: String, _dcountry: String, dregex: String, countryLabels: List[String]): List[List[Long]] = {
     val res = ListBuffer[List[Long]]()
     var stime = 0L
     var ctime = 0L
     var txid = 0L
-
+    
+    val sqlBuffer = ListBuffer[JsObject]()
+    
     stime = System.currentTimeMillis()
-
     DB localTx { implicit session =>
       {
         txid = sql"select txid_current()".list.result(x => {
           x.long(1)
         }, session)(0)
-        
+
         val from = withSQL {
           select
             .from(Randomdata as r)
@@ -665,6 +740,8 @@ object TxnUtils {
         }.map(Randomdata(r)).list.apply()
 
         res += List(System.currentTimeMillis, txid, from(0).id, READ_OP, countryLabels.indexOf(_scountry), countryLabels.indexOf(_dcountry))
+        sqlBuffer += JsObject("op" -> JsNumber(READ_OP), "oid" -> JsNumber(from(0).id))
+        
         val to = sql"select * from randomdata where country = ${_dcountry} and fname ~ ${dregex} order by RANDOM() limit 1".map(Randomdata(r)).list().apply()
         val amnt = (from(0).bankbalance * 0.1)
         var snbal = from(0).bankbalance - amnt
@@ -677,15 +754,39 @@ object TxnUtils {
 
         sql"update Randomdata set bankbalance = ${snbal} where id = ${sid}".update.apply()
         res += List(System.currentTimeMillis, txid, from(0).id, UPDATE_OP, countryLabels.indexOf(_scountry), countryLabels.indexOf(_dcountry))
+        sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(from(0).id),
+          "obal" -> JsNumber(from(0).bankbalance),
+          "nbal" -> JsNumber(snbal))
 
         sql"update Randomdata set bankbalance = ${dnbal} where id = ${did}".update.apply()
         res += List(System.currentTimeMillis, txid, to(0).id, UPDATE_OP, countryLabels.indexOf(_scountry), countryLabels.indexOf(_dcountry))
+        sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(to(0).id),
+          "obal" -> JsNumber(to(0).bankbalance),
+          "nbal" -> JsNumber(dnbal))
       }
     }
 
     ctime = System.currentTimeMillis()
-     AIMSLogger.logResponseTime(txid, stime, ctime)
+    AIMSLogger.logResponseTime(txid, stime, ctime)
     res.foreach(AIMSLogger.logTxAccessEntry(_))
+    // flip a biased coin to determine if the transaction is malicious
+    if (mworkload && mtrans.size < maxm  && mdist(Random.nextInt(mdist.size))) {
+      mtrans += txid
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("B"), "sci" -> JsNumber(countryLabels.indexOf(_scountry)), 
+      "dci" -> JsNumber(countryLabels.indexOf(_dcountry)), 
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      AIMSLogger.logTransaction(txspec)
+      epool.execute(new IDSAlert(txid, ddelay))
+    }
+    else {
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("B"), "sci" -> JsNumber(countryLabels.indexOf(_scountry)), 
+      "dci" -> JsNumber(countryLabels.indexOf(_dcountry)),       
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(false))
+      AIMSLogger.logTransaction(txspec)
+    }
+    
     return res.toList
   }
 
@@ -695,8 +796,9 @@ object TxnUtils {
     var ctime = 0L
     var txid = 0L
 
+    val sqlBuffer = ListBuffer[JsObject]()
+    
     stime = System.currentTimeMillis()
-
     DB localTx { implicit session =>
       {
         txid = sql"select txid_current()".list.result(x => {
@@ -714,13 +816,20 @@ object TxnUtils {
         }.map(Randomdata(r)).list.apply()
 
         res += List(System.currentTimeMillis, txid, from(0).id, READ_OP, sci.toLong)
+        sqlBuffer += JsObject("op" -> JsNumber(READ_OP), "oid" -> JsNumber(from(0).id))
+        
         val amnt = (from(0).bankbalance * 0.1)
         var snbal = from(0).bankbalance - amnt
         if (snbal <= 0) snbal = Random.nextFloat() * reinitbal
         val sid = from(0).id
+        
         sql"update Randomdata set bankbalance = ${snbal} where id = ${sid}".update.apply()
         res += List(System.currentTimeMillis, txid, from(0).id, UPDATE_OP, sci.toLong)
-          
+        sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(from(0).id),
+          "obal" -> JsNumber(from(0).bankbalance),
+          "nbal" -> JsNumber(snbal))
+        
+
         for (dci <- dcis) {
           val dcountry = countryLabels(dci)
           val to = withSQL {
@@ -730,12 +839,16 @@ object TxnUtils {
               .append(sqls"order by RANDOM()")
               .limit(1)
           }.map(Randomdata(r)).list.apply()
-          
+
           val damnt = amnt / dcis.size
 
           val did = to(0).id
           sql"update Randomdata set bankbalance = ${damnt} where id = ${did}".update.apply()
           res += List(System.currentTimeMillis, txid, did, UPDATE_OP, sci.toLong, dci.toLong)
+          sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(to(0).id),
+          "obal" -> JsNumber(to(0).bankbalance),
+          "nbal" -> JsNumber(damnt))
+          
         }
       }
     }
@@ -743,7 +856,22 @@ object TxnUtils {
     ctime = System.currentTimeMillis()
     AIMSLogger.logResponseTime(txid, stime, ctime)
     res.foreach(AIMSLogger.logTxAccessEntry(_))
-
+    
+    // flip a biased coin to determine if the transaction is malicious
+    if (mworkload && mtrans.size < maxm  && mdist(Random.nextInt(mdist.size))) {
+      mtrans += txid
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("C"), "ci" -> JsNumber(sci), 
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      AIMSLogger.logTransaction(txspec)
+      epool.execute(new IDSAlert(txid, ddelay))
+    }
+    else {
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("C"), "ci" -> JsNumber(sci),        
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(false))
+      AIMSLogger.logTransaction(txspec)
+    }
     return res.toList
   }
 
@@ -753,8 +881,9 @@ object TxnUtils {
     var ctime = 0L
     var txid = 0L
 
+    val sqlBuffer = ListBuffer[JsObject]()
+    
     stime = System.currentTimeMillis()
-
     DB localTx { implicit session =>
       {
         txid = sql"select txid_current()".list.result(x => {
@@ -762,7 +891,7 @@ object TxnUtils {
         }, session)(0)
 
         var tamnt = 0d
-        
+
         val dcountry = countryLabels(dci)
 
         val to = withSQL {
@@ -772,7 +901,7 @@ object TxnUtils {
             .append(sqls"order by RANDOM()")
             .limit(1)
         }.map(Randomdata(r)).list.apply()
-        
+
         for (sci <- scis) {
           val scountry = countryLabels(sci)
           val from = withSQL {
@@ -784,20 +913,27 @@ object TxnUtils {
           }.map(Randomdata(r)).list.apply()
 
           res += List(System.currentTimeMillis, txid, from(0).id, READ_OP, sci.toLong)
+          sqlBuffer += JsObject("op" -> JsNumber(READ_OP), "oid" -> JsNumber(from(0).id))
           
           val amnt = (from(0).bankbalance * 0.1)
-          
+
           var snbal = from(0).bankbalance - amnt
           if (snbal <= 0) snbal = Random.nextFloat() * reinitbal
           val sid = from(0).id
 
           sql"update Randomdata set bankbalance = ${snbal} where id = ${sid}".update.apply()
           res += List(System.currentTimeMillis, txid, from(0).id, UPDATE_OP, sci.toLong)
+          sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(from(0).id),
+          "obal" -> JsNumber(from(0).bankbalance),
+          "nbal" -> JsNumber(snbal))
           
           var dnbal = to(0).bankbalance + amnt
           val did = to(0).id
           sql"update Randomdata set bankbalance = ${dnbal} where id = ${did}".update.apply()
           res += List(System.currentTimeMillis, txid, did, UPDATE_OP, sci.toLong, dci.toLong)
+           sqlBuffer += JsObject("op" -> JsNumber(UPDATE_OP), "oid" -> JsNumber(to(0).id),
+          "obal" -> JsNumber(to(0).bankbalance),
+          "nbal" -> JsNumber(dnbal))
         }
       }
     }
@@ -805,9 +941,89 @@ object TxnUtils {
     ctime = System.currentTimeMillis()
     AIMSLogger.logResponseTime(txid, stime, ctime)
     res.foreach(AIMSLogger.logTxAccessEntry(_))
-
+    if (mworkload && mtrans.size < maxm  && mdist(Random.nextInt(mdist.size))) {
+      mtrans += txid
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("D"), "ci" -> JsNumber(scis(0)), 
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(true))
+      AIMSLogger.logTransaction(txspec)
+      epool.execute(new IDSAlert(txid, ddelay))      
+    }
+    else {
+      val txspec = JsObject("txid" -> JsNumber(txid), "stime" -> JsNumber(stime), "ctime" -> JsNumber(ctime),
+      "class" -> JsString("D"), "ci" -> JsNumber(scis(0)), // TODO: fix this. to allow inter-country        
+      "subtx" -> JsArray(sqlBuffer.toVector), "m" -> JsBoolean(false))
+      AIMSLogger.logTransaction(txspec)
+    }
     return res.toList
   }
+
+  // TODO: Many-to-Many within the same county. 
+  // 
+  //  def runClassM2MTransaction(ci: Int, sc: Int, dc: Int, countryLabels: List[String]): List[List[Long]] = {
+  //    val res = ListBuffer[List[Long]]()
+  //    var stime = 0L
+  //    var ctime = 0L
+  //    var txid = 0L
+  //
+  //    stime = System.currentTimeMillis()
+  //
+  //    DB localTx { implicit session =>
+  //      {
+  //        txid = sql"select txid_current()".list.result(x => {
+  //          x.long(1)
+  //        }, session)(0)
+  //
+  //        
+  //        var tamnt = 0d
+  //        
+  //        // get a number of sources tuples
+  //        val cstr = countryLabels(ci)
+  //        
+  //        val fromto = withSQL {
+  //          select
+  //            .from(Randomdata as r)
+  //            .where.eq(r.country, cstr)
+  //            .append(sqls"order by RANDOM()")
+  //            .limit(sc+dc)
+  //        }.map(Randomdata(r)).list.apply()
+  //        
+  //        val scis = 1
+  //        for (sci <- scis) {
+  //          val scountry = countryLabels(sci)
+  //          val from = withSQL {
+  //            select
+  //              .from(Randomdata as r)
+  //              .where.eq(r.country, scountry)
+  //              .append(sqls"order by RANDOM()")
+  //              .limit(1)
+  //          }.map(Randomdata(r)).list.apply()
+  //
+  //          res += List(System.currentTimeMillis, txid, from(0).id, READ_OP, sci.toLong)
+  //          
+  //          val amnt = (from(0).bankbalance * 0.1)
+  //          
+  //          var snbal = from(0).bankbalance - amnt
+  //          if (snbal <= 0) snbal = Random.nextFloat() * reinitbal
+  //          val sid = from(0).id
+  //
+  //          sql"update Randomdata set bankbalance = ${snbal} where id = ${sid}".update.apply()
+  //          res += List(System.currentTimeMillis, txid, from(0).id, UPDATE_OP, sci.toLong)
+  //          
+  //          var dnbal = to(0).bankbalance + amnt
+  //          val did = to(0).id
+  //          sql"update Randomdata set bankbalance = ${dnbal} where id = ${did}".update.apply()
+  //          res += List(System.currentTimeMillis, txid, did, UPDATE_OP, sci.toLong, dci.toLong)
+  //        }
+  //      }
+  //    }
+  //
+  //    ctime = System.currentTimeMillis()
+  //    AIMSLogger.logResponseTime(txid, stime, ctime)
+  //    res.foreach(AIMSLogger.logTxAccessEntry(_))
+  //
+  //    return res.toList
+  //  }
 
   // class C: run a transfer between one random account to a random number between 2 and N where N > 5 
   // source and destination can be from different country or same country or mixed
