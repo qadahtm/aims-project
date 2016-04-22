@@ -159,18 +159,38 @@ object DemoWorkloadDriver extends App {
       println(s"Malicioous transaction count ${TxnUtils.getMTxCount()}")
     }
 
+    case "runconvd" => {
+      val mwl = false
+
+      TxnUtils.setMWorkload(mwl)
+
+//      TxnUtils.runConfWorkloadTry4(countryLabels) // Attacks on IB0 only, workload normal, 300 total
+      TxnUtils.runConfWorkloadTry5(countryLabels) // Attacks on IB0 only, workload high fanout, 300 total
+
+      println(s"Malicioous transaction count ${TxnUtils.getMTxCount()}")
+    }
+
     //    1461107930666,693492,22916,1,0
     //    1461107930667,693492,22916,3,0,1
+
+    case "shuffle" => {
+      val tracefile = args(1)
+      val outfile = args(2)
+      val lines = scala.io.Source.fromFile(tracefile).getLines().toList
+      val slines = scala.util.Random.shuffle(lines)
+      val pw = new PrintWriter(new File(outfile))
+      slines.foreach { pw.println(_) }
+      pw.close()
+    }
 
     case "replay" => {
       val tracefile = args(1)
       val lines = scala.io.Source.fromFile(tracefile).getLines()
-      // compute the number of transactions
-      
+
       var mtxncount = 0L
       var ntxncount = 0L
       var ttxncount = 0L
-      
+
       var txid = 0L
 
       val r = Randomdata.syntax("r")
@@ -188,15 +208,14 @@ object DemoWorkloadDriver extends App {
         val txnjs = line.parseJson.asJsObject
         val tc = txnjs.fields.get("class").get.asInstanceOf[JsString].value
         val m = txnjs.fields.get("m").get.asInstanceOf[JsBoolean].value
-        
-        
+
         stime = System.currentTimeMillis()
         DB localTx { implicit session =>
           {
             txid = sql"select txid_current()".list.result(x => {
               x.long(1)
             }, session)(0)
-            
+
             txnjs.fields.get("subtx") match {
               case Some(x) => {
                 x.asInstanceOf[JsArray].elements.foreach { stxjsv =>
@@ -204,7 +223,6 @@ object DemoWorkloadDriver extends App {
                     val jso = stxjsv.asJsObject
                     val op = jso.fields.get("op").get.asInstanceOf[JsNumber].value.toInt
                     val oid = jso.fields.get("oid").get.asInstanceOf[JsNumber].value.toLong
-                    
 
                     op match {
                       case 1 => {
@@ -265,20 +283,18 @@ object DemoWorkloadDriver extends App {
               }
               case None => {}
             }
-            
-            
+
           } // transcation end
-          if (m){
+          if (m) {
             val mdelay = txnjs.fields.get("mdelay").get.asInstanceOf[JsNumber].value.toLong
             epool.execute(new IDSAlert(txid, mdelay))
-            mtxncount = mtxncount +1
+            mtxncount = mtxncount + 1
+          } else {
+            ntxncount = ntxncount + 1
           }
-          else {
-            ntxncount = ntxncount +1
-          }
-          
+
           ttxncount = ttxncount + 1
-          
+
         }
 
         ctime = System.currentTimeMillis()
@@ -286,10 +302,10 @@ object DemoWorkloadDriver extends App {
         res.foreach(AIMSLogger.logTxAccessEntry(_))
 
       }
-      
+
       println(s"Total transaction replayed: ${ttxncount}")
-      println(s"Total malicious transaction replyed: ${mtxncount}")
-      println(s"Total normal transaction replyed: ${ntxncount}")
+      println(s"Total malicious transaction replayed: ${mtxncount}")
+      println(s"Total normal transaction replayed: ${ntxncount}")
     }
 
     case "createibs" => {
@@ -465,8 +481,8 @@ object DemoWorkloadDriver extends App {
       val k = args(3).toInt
       val q = args(4).toInt
 
-      AimsUtils.genAMPLEDatFile(in_datacsv, skipHeader, k, q)
-      //      AimsUtils.generateAMPLEDataFiles(in_datacsv, skipHeader)
+      //      AimsUtils.genAMPLEDatFile(in_datacsv, skipHeader, k, q)
+      AimsUtils.generateAMPLEDataFiles(in_datacsv, skipHeader)
       println("Done with data file generation!")
 
     }
@@ -549,8 +565,9 @@ class IDSAlert(txid: Long, delay: Long) extends Runnable {
   def run() {
     //    println(s"alerting in $delay ms")
     Thread.sleep(delay)
+    val ret1 = sql"select blockTxn(${txid});".execute().apply()
     //    println("alerting now!! "+txid+ " is malicious")
-    val ret = sql"select alertMTxn(${txid});".execute().apply()
+    val ret2 = sql"select alertMTxn(${txid});".execute().apply()
     //    println("done alerting, ret = "+ret)
 
   }
