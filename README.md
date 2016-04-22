@@ -71,8 +71,10 @@ $ cp wltrace.json mytrace.json
 Then, replay the workload as follows:
 
 ```sh
-$ ./target/pack/bin/DemoWorkloadDriver replay mytrace.json
+$ ./target/pack/bin/DemoWorkloadDriver replay mytrace.json 200
 ```
+
+In the above command, the detection latency can be configured by the second parameter, which indicate the nubmer of milliseconds between commit time and detection time. 
 
 Note: If malicious transaction were injected into the workload, they will be replayed as well and alerts will be generated for them. 
 

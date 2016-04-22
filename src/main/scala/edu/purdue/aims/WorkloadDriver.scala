@@ -172,6 +172,8 @@ object DemoWorkloadDriver extends App {
 
     //    1461107930666,693492,22916,1,0
     //    1461107930667,693492,22916,3,0,1
+    
+   
 
     case "shuffle" => {
       val tracefile = args(1)
@@ -185,6 +187,9 @@ object DemoWorkloadDriver extends App {
 
     case "replay" => {
       val tracefile = args(1)
+      val dlatency = args(2).toLong
+      TxnUtils.setDDelay(dlatency)
+      
       val lines = scala.io.Source.fromFile(tracefile).getLines()
 
       var mtxncount = 0L
